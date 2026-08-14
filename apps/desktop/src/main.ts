@@ -45,6 +45,7 @@ function createSplashWindow(): BrowserWindow {
     show: false,
     frame: true,
     resizable: false,
+    icon: assetPath('icon.png'),
     backgroundColor: '#fbfdff',
     webPreferences: {
       contextIsolation: true,
@@ -72,6 +73,7 @@ function createMainWindow(url: string): BrowserWindow {
     minHeight: 640,
     show: false,
     title: APP_TITLE,
+    icon: assetPath('icon.png'),
     backgroundColor: '#f8fafc',
     webPreferences: {
       contextIsolation: true,
