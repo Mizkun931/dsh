@@ -16,16 +16,41 @@ const REQUIRED_REPO_MARKERS = ['package.json', 'pnpm-lock.yaml', join('apps', 'c
 const BUILD_START_PROGRESS = 3
 const BUILD_DONE_PROGRESS = 86
 const SERVER_START_PROGRESS = 92
-// Server URL printed — the client-side boot still runs after this point,
-// so the splash must not read 100% yet; the window layer completes it
-// once the web shell reports its boot settle (see waitForMainAppReady).
-const READY_PROGRESS = 96
-const BUILD_PROGRESS_MARKERS = [
-  { pattern: /\bbuild:lib\b/u, percent: 18 },
-  { pattern: /\bbuild:lib:host\b/u, percent: 32 },
-  { pattern: /\bbuild:lib:client\b/u, percent: 56 },
-  { pattern: /\bbuild:web\b/u, percent: 76 },
-] as const
+/**
+ * Server URL printed — the client-side boot still runs after this point,
+ * so the splash must not read 100% yet; the window layer completes it
+ * once the web shell reports its boot settle (see waitForMainAppReady).
+ */
+export const READY_PROGRESS = 96
+
+/** One build-output milestone the splash progress bar waits for. */
+interface BuildProgressMarker {
+  /** Output signature (script banner, tool banner, or completion line). */
+  pattern: RegExp
+  /** Progress percent reported once the pattern has matched enough times. */
+  percent: number
+  /** Required match count; defaults to 1 (tsdown prints its banner once per build face). */
+  occurrences?: number
+}
+
+/** Build milestones, in the order the workspace build emits them (npm script lines, tsdown face banners, vite completion). */
+const BUILD_PROGRESS_MARKERS: readonly BuildProgressMarker[] = [
+  { pattern: /\bbuild:lib\b/gu, percent: 14 },
+  { pattern: /\bbuild:lib:host\b/gu, percent: 24 },
+  { pattern: /tsdown v\d/gu, percent: 36 },
+  { pattern: /\bbuild:lib:client\b/gu, percent: 46 },
+  { pattern: /tsdown v\d/gu, percent: 58, occurrences: 2 },
+  { pattern: /\bbuild:web\b/gu, percent: 70 },
+  { pattern: /\bbuilt in\b/gu, percent: 80 },
+]
+
+/** Build milestones in ascending percent order (deduplicated). */
+const BUILD_MILESTONES = [...new Set(BUILD_PROGRESS_MARKERS.map(marker => marker.percent))].sort((a, b) => a - b)
+
+/** Estimated milliseconds each percent of silent-phase progress takes. */
+const ESTIMATE_MS_PER_PERCENT = 350
+/** Estimated percent a silent phase may add before the next real milestone (never reaches it). */
+const ESTIMATE_MAX_GAIN = 9.9
 
 /** A launched Web profile process and its ready browser URL. */
 export interface HarnessWebServer {
@@ -73,21 +98,38 @@ export function parseReadyUrl(output: string): string | undefined {
   return match?.[1]
 }
 
-/** Infer the coarse workspace-build percentage from pnpm/npm script output. */
+/**
+ * Infer the workspace-build percentage from the accumulated pnpm/npm output.
+ * @param output - accumulated build output so far.
+ * @returns the highest milestone percent whose pattern has matched, or undefined.
+ */
 export function progressForBuildOutput(output: string): number | undefined {
   let progress: number | undefined
   for (const marker of BUILD_PROGRESS_MARKERS) {
-    if (marker.pattern.test(output)) progress = Math.max(progress ?? 0, marker.percent)
+    if (markerReached(marker, output)) progress = Math.max(progress ?? 0, marker.percent)
   }
   return progress
+}
+
+function markerReached(marker: BuildProgressMarker, output: string): boolean {
+  return (output.match(marker.pattern) ?? []).length >= (marker.occurrences ?? 1)
 }
 
 function progressStepsForBuildOutput(output: string): number[] {
   const steps: number[] = []
   for (const marker of BUILD_PROGRESS_MARKERS) {
-    if (marker.pattern.test(output)) steps.push(marker.percent)
+    if (markerReached(marker, output)) steps.push(marker.percent)
   }
   return steps
+}
+
+/**
+ * Estimated progress gain for a phase with no real progress events.
+ * @param elapsedMs - time since the last real progress event.
+ * @returns the estimated percent gain, capped just below the next milestone.
+ */
+export function estimateProgressGain(elapsedMs: number): number {
+  return Math.min(ESTIMATE_MAX_GAIN, elapsedMs / ESTIMATE_MS_PER_PERCENT)
 }
 
 /** Return whether a directory has the repo files the desktop launcher needs. */
@@ -193,19 +235,31 @@ export function runHarnessBuild(options: HarnessBuildOptions = {}): Promise<void
   let stdout = ''
   let stderr = ''
   let lastProgress = BUILD_START_PROGRESS
+  let lastProgressAt = Date.now()
 
   emitProgress(onProgress, 'build', lastProgress)
+
+  // Silent phases (tsc, tsdown, vite) emit no progress lines; estimate
+  // forward between milestones so the bar keeps moving, capped just below
+  // the next real milestone. Real events realign it instantly.
+  const estimateTicker = setInterval(() => {
+    const next = BUILD_MILESTONES.find(milestone => milestone > lastProgress) ?? BUILD_DONE_PROGRESS
+    const estimated = lastProgress + estimateProgressGain(Date.now() - lastProgressAt)
+    emitProgress(onProgress, 'build', Math.min(next - 0.1, estimated))
+  }, 300)
 
   return new Promise<void>((resolvePromise, rejectPromise) => {
     const rejectOnce = (error: Error): void => {
       if (settled) return
       settled = true
+      clearInterval(estimateTicker)
       if (!child.killed && child.exitCode === null) child.kill()
       rejectPromise(error)
     }
     const resolveOnce = (): void => {
       if (settled) return
       settled = true
+      clearInterval(estimateTicker)
       emitProgress(onProgress, 'build', BUILD_DONE_PROGRESS)
       resolvePromise()
     }
@@ -218,6 +272,7 @@ export function runHarnessBuild(options: HarnessBuildOptions = {}): Promise<void
       for (const progress of progressStepsForBuildOutput(`${stdout}\n${stderr}`)) {
         if (progress > lastProgress) {
           lastProgress = progress
+          lastProgressAt = Date.now()
           emitProgress(onProgress, 'build', progress)
         }
       }
@@ -269,11 +324,18 @@ export async function startHarnessWebServer(options: StartHarnessWebServerOption
   let settled = false
   let stdout = ''
   let stderr = ''
+  // dsh web prints nothing until its URL; estimate forward while waiting.
+  const serverStartedAt = Date.now()
+  const estimateTicker = setInterval(() => {
+    const estimated = SERVER_START_PROGRESS + estimateProgressGain(Date.now() - serverStartedAt)
+    emitProgress(options.onProgress, 'server', Math.min(READY_PROGRESS - 0.1, estimated))
+  }, 300)
 
   return new Promise<HarnessWebServer>((resolvePromise, rejectPromise) => {
     const rejectOnce = (error: Error): void => {
       if (settled) return
       settled = true
+      clearInterval(estimateTicker)
       clearTimeout(timeout)
       stopHarnessWebServer({ url: '', process: child })
       rejectPromise(error)
@@ -281,6 +343,7 @@ export async function startHarnessWebServer(options: StartHarnessWebServerOption
     const resolveOnce = (url: string): void => {
       if (settled) return
       settled = true
+      clearInterval(estimateTicker)
       clearTimeout(timeout)
       resolvePromise({ url, process: child })
     }

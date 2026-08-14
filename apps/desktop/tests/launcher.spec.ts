@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import {
+  estimateProgressGain,
   isHarnessRepoRoot,
   parseReadyUrl,
   progressForBuildOutput,
@@ -44,11 +45,24 @@ describe('desktop launcher helpers', () => {
     expect(resolvePnpmExecutable({ DSH_DESKTOP_PNPM: 'C:\\Tools\\pnpm.cmd' })).toBe('C:\\Tools\\pnpm.cmd')
   })
 
-  it('infers coarse build progress from workspace script output', () => {
+  it('infers build progress from workspace script output at every milestone', () => {
     expect(progressForBuildOutput('waiting')).toBeUndefined()
-    expect(progressForBuildOutput('> @deepseek-ai/dsh-root@0.1.0-rc.5 build:lib')).toBe(18)
-    expect(progressForBuildOutput('> @deepseek-ai/dsh-root@0.1.0-rc.5 build:lib:host')).toBe(32)
-    expect(progressForBuildOutput('> @deepseek-ai/dsh-root@0.1.0-rc.5 build:lib:client')).toBe(56)
-    expect(progressForBuildOutput('build:lib\nbuild:web')).toBe(76)
+    expect(progressForBuildOutput('> @deepseek-ai/dsh-root@0.1.0-rc.5 build:lib')).toBe(14)
+    expect(progressForBuildOutput('> @deepseek-ai/dsh-root@0.1.0-rc.5 build:lib:host')).toBe(24)
+    expect(progressForBuildOutput('ℹ tsdown v0.22.2 powered by rolldown v1.1.1')).toBe(36)
+    expect(progressForBuildOutput('> @deepseek-ai/dsh-root@0.1.0-rc.5 build:lib:client')).toBe(46)
+    expect(progressForBuildOutput([
+      'ℹ tsdown v0.22.2 powered by rolldown v1.1.1',
+      'ℹ tsdown v0.22.2 powered by rolldown v1.1.1',
+    ].join('\n'))).toBe(58)
+    expect(progressForBuildOutput('build:lib\nbuild:web')).toBe(70)
+    expect(progressForBuildOutput('✓ built in 2.31s')).toBe(80)
+  })
+
+  it('estimates silent-phase progress gain capped below the next milestone', () => {
+    expect(estimateProgressGain(0)).toBe(0)
+    expect(estimateProgressGain(350)).toBeCloseTo(1)
+    expect(estimateProgressGain(3_500)).toBeCloseTo(9.9)
+    expect(estimateProgressGain(60_000)).toBeCloseTo(9.9)
   })
 })

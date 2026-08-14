@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-15-desktop-splash-boot-signal-handoff.md
-2026-08-15-desktop-splash-boot-signal-handoff.md: 205945f655008f61a3d33d4054a39f138c1a4dcc
-2026-08-15-desktop-splash-boot-signal-handoff.zh.md: a4a763b7686a8b22d03f5b970f56c872cf8d49db
+2026-08-15-desktop-splash-boot-signal-handoff.md: 64e867ccfbc1a265675981600c1febbd10606ed1
+2026-08-15-desktop-splash-boot-signal-handoff.zh.md: a96e7f0bfbb53a235bf3bb069ad2e52096d4d58d
