@@ -18,7 +18,6 @@ const DEFAULT_WINDOW_HEIGHT = 860
 const SPLASH_MINIMUM_MS = 1_100
 const SPLASH_FADE_MS = 360
 const MAIN_APP_READY_TIMEOUT_MS = 30_000
-const MAIN_APP_READY_STABLE_MS = 260
 
 let server: HarnessWebServer | undefined
 let mainWindow: BrowserWindow | undefined
@@ -125,32 +124,18 @@ async function waitForMainAppReady(win: BrowserWindow): Promise<void> {
   const result = await win.webContents.executeJavaScript(`
     (() => new Promise(resolve => {
       const deadline = Date.now() + ${String(MAIN_APP_READY_TIMEOUT_MS)};
-      const stableMs = ${String(MAIN_APP_READY_STABLE_MS)};
-      const loadingText = "Loading plugins\\u2026";
-      const fallbackLoadingText = "Loading plugins...";
-      const failureText = "Failed to load plugins";
-      let stableSince;
-
       const tick = () => {
-        const text = document.body?.innerText ?? "";
-        if (text.includes(failureText)) {
-          resolve({ state: "failed", detail: text.slice(0, 4000) });
+        // The web shell kernel publishes its boot state on <html>
+        // (data-dsh-boot); poll the signal instead of guessing from text.
+        const state = document.documentElement?.dataset.dshBoot;
+        if (state === "ready") {
+          resolve({ state: "ready" });
           return;
         }
-
-        const root = document.getElementById("root");
-        const hasRootContent = (root?.childElementCount ?? 0) > 0;
-        const isBootLoading = text.includes(loadingText) || text.includes(fallbackLoadingText);
-        if (hasRootContent && !isBootLoading) {
-          stableSince ??= Date.now();
-          if (Date.now() - stableSince >= stableMs) {
-            resolve({ state: "ready" });
-            return;
-          }
-        } else {
-          stableSince = undefined;
+        if (state === "failed") {
+          resolve({ state: "failed", detail: (document.body?.innerText ?? "").slice(0, 4000) });
+          return;
         }
-
         if (Date.now() >= deadline) {
           resolve({ state: "timeout" });
           return;

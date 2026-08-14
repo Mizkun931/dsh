@@ -16,7 +16,10 @@ const REQUIRED_REPO_MARKERS = ['package.json', 'pnpm-lock.yaml', join('apps', 'c
 const BUILD_START_PROGRESS = 3
 const BUILD_DONE_PROGRESS = 86
 const SERVER_START_PROGRESS = 92
-const READY_PROGRESS = 100
+// Server URL printed — the client-side boot still runs after this point,
+// so the splash must not read 100% yet; the window layer completes it
+// once the web shell reports its boot settle (see waitForMainAppReady).
+const READY_PROGRESS = 96
 const BUILD_PROGRESS_MARKERS = [
   { pattern: /\bbuild:lib\b/u, percent: 18 },
   { pattern: /\bbuild:lib:host\b/u, percent: 32 },

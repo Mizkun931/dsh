@@ -193,6 +193,7 @@
         bottom: 0;
         display: block;
         width: 0%;
+        overflow: hidden;
         border-radius: inherit;
         background: linear-gradient(90deg, var(--brand), var(--brand-sky));
         box-shadow:
@@ -201,6 +202,8 @@
         transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
       }
 
+      /* Nested inside .progress-fill: the fill clips the sweep, so the
+         shimmer travels only across the filled region (40% of the fill). */
       .progress-shimmer {
         position: absolute;
         top: 0;
@@ -385,8 +388,9 @@
           </span>
         </div>
         <div class="progress" aria-hidden="true">
-          <span class="progress-fill" data-progress></span>
-          <span class="progress-shimmer" data-progress-shimmer></span>
+          <span class="progress-fill" data-progress>
+            <span class="progress-shimmer" data-progress-shimmer></span>
+          </span>
         </div>
       </section>
     </main>
