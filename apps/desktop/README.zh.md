@@ -2,9 +2,21 @@
 
 [English](README.md) | 中文
 
-这是基于已发布 Web profile 的 Electron 桌面启动器参考。该包会先显示全屏无边框 DeepSeek Harness 开屏窗口，在后台编译 workspace artifacts 并同步更新开屏进度，然后使用 `web --host 127.0.0.1 --port 0` 启动已构建的 `@deepseek-ai/dsh` CLI，等待 `dsh web:` URL 行，再在沙箱化 Electron 窗口中打开这个 loopback URL。
+这是基于已发布 Web profile 的 Electron 桌面启动器参考。该包会先显示全屏 DeepSeek Harness 开屏窗口，然后使用 `web --host 127.0.0.1 --port 0` 启动已构建的 `@deepseek-ai/dsh` CLI，等待 `dsh web:` URL 行，再在沙箱化 Electron 窗口中打开这个 loopback URL。
+
+两种启动模式共享同一套开屏到窗口的流程：
+
+- **开发模式**（在 checkout 内）：workspace artifacts 会在开屏窗口背后于后台编译，后端使用 `PATH` 上的 `node` 运行。
+- **打包模式**（Windows 安装包）：启动时不编译任何内容。打包的 `node_modules` 已携带构建好的 CLI、bundle 与 web dist；后端直接运行在 Electron 自带运行时（`ELECTRON_RUN_AS_NODE`）上，工作目录为用户主目录，因此已安装的 app 不需要 checkout，也不需要 `PATH` 上有 Node 或 pnpm。内置的 pnpm 二进制（`resources/pnpm/pnpm.exe`）通过 `DSH_PNPM` 导出，使 `dsh plugin` 无需全局安装 pnpm 即可继续管理 profile 插件。
 
 启动器复用 [`@deepseek-ai/dsh-web-app`](../../packages/bundle/web-app/README.md) 持有的浏览器应用和 host 图，不定义第二套前端组合，也不定义独立 API 桥。
+
+## 用户数据与插件、skill 安装
+
+所有用户数据都位于 harness home（`~/.dsh`，可用 `DSH_HOME` 覆盖）之下，绝不写入安装目录：
+
+- 插件通过 `dsh plugin --profile web add <package>` 按 profile 安装（安装包内置 pnpm，无需单独安装 pnpm）。profile 目录 `~/.dsh/profiles/web` 维护自己的 `package.json` 与 `node_modules`。
+- skill 会自动从 `~/.dsh/skills/<name>/SKILL.md` 与 `~/.agents/skills/<name>/SKILL.md` 发现；把 skill 目录放进去并重启即可加载。
 
 ## Commands
 
@@ -26,5 +38,5 @@ pnpm desktop:dist
 
 ## Known Limitations
 
-- 桌面启动器依赖 source checkout、`pnpm` 和 Node 可执行文件，因为后端仍会在启动时编译，然后作为既有 `dsh web` 进程运行。
+- 开发模式仍会在启动时编译 workspace，且需要 `PATH` 上有 `pnpm` 与 `node`；打包安装器没有这两项要求。
 - Electron 窗口加载 loopback Web server。后续原生桌面 host 可以替换为 file-loaded renderer 与 IPC transport，而不改变浏览器插件 roster。

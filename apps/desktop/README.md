@@ -2,9 +2,21 @@
 
 English | [中文](README.zh.md)
 
-Reference for the Electron desktop launcher over the shipped Web profile. The package displays a full-screen frameless DeepSeek Harness splash window first, compiles the workspace artifacts in the background with splash progress updates, starts the built `@deepseek-ai/dsh` CLI with `web --host 127.0.0.1 --port 0`, waits for the `dsh web:` URL line, then opens that loopback URL in a sandboxed Electron window.
+Reference for the Electron desktop launcher over the shipped Web profile. The package displays a full-screen DeepSeek Harness splash window first, starts the built `@deepseek-ai/dsh` CLI with `web --host 127.0.0.1 --port 0`, waits for the `dsh web:` URL line, then opens that loopback URL in a sandboxed Electron window.
+
+Two launch modes share the same splash-to-window flow:
+
+- **Development** (from a checkout): the workspace artifacts are compiled in the background behind the splash, then the backend runs on the `node` from `PATH`.
+- **Packaged** (the Windows installer): nothing is compiled at launch. The packaged `node_modules` already carries the built CLI, bundles, and web dist; the backend runs on the Electron runtime itself (`ELECTRON_RUN_AS_NODE`) with the user's home as the working directory, so an installed app needs no checkout, no Node, and no pnpm on `PATH`. The bundled pnpm binary (`resources/pnpm/pnpm.exe`) is exported as `DSH_PNPM` so `dsh plugin` keeps managing profile plugins without a global install.
 
 The launcher reuses the browser application and host graph owned by [`@deepseek-ai/dsh-web-app`](../../packages/bundle/web-app/README.md); it does not define a second frontend composition or a separate API bridge.
+
+## User data and installing plugins and skills
+
+All user data lives under the harness home (`~/.dsh`, overridable with `DSH_HOME`), never inside the installation directory:
+
+- Plugins install per profile with `dsh plugin --profile web add <package>` (the installer ships a bundled pnpm, so no separate pnpm install is needed). The profile directory `~/.dsh/profiles/web` keeps its own `package.json` and `node_modules`.
+- Skills are discovered automatically from `~/.dsh/skills/<name>/SKILL.md` and `~/.agents/skills/<name>/SKILL.md`; drop a skill directory there and restart to load it.
 
 ## Commands
 
@@ -26,5 +38,5 @@ None. This package only starts the Web profile and renders an Electron shell; mo
 
 ## Known Limitations
 
-- The desktop launcher depends on a source checkout, `pnpm`, and a Node executable because the backend is still compiled at launch and then run as the existing `dsh web` process.
+- Development mode still compiles the workspace at launch and needs `pnpm` and `node` on `PATH`; the packaged installer has neither requirement.
 - The Electron window loads the loopback Web server. A future native desktop host can replace this with a file-loaded renderer plus IPC transport without changing the browser plugin roster.

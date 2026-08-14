@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { lstatSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import {
   estimateProgress,
   isHarnessRepoRoot,
+  isPackagedInstall,
   parseReadyUrl,
   progressForBuildOutput,
   resolveHarnessRepoRoot,
@@ -43,6 +44,32 @@ describe('desktop launcher helpers', () => {
   it('allows the launch-time pnpm executable to be configured', () => {
     expect(resolvePnpmExecutable({})).toBe('pnpm')
     expect(resolvePnpmExecutable({ DSH_DESKTOP_PNPM: 'C:\\Tools\\pnpm.cmd' })).toBe('C:\\Tools\\pnpm.cmd')
+    expect(resolvePnpmExecutable({ DSH_PNPM: 'D:\\App\\resources\\pnpm\\pnpm.exe' })).toBe('D:\\App\\resources\\pnpm\\pnpm.exe')
+    expect(resolvePnpmExecutable({ DSH_PNPM: 'D:\\App\\resources\\pnpm\\pnpm.exe', DSH_DESKTOP_PNPM: 'pnpm.cmd' })).toBe('D:\\App\\resources\\pnpm\\pnpm.exe')
+  })
+
+  it('detects packaged installs by the dsh CLI link kind', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-desktop-pkg-'))
+    try {
+      // A packaged app materializes the dsh CLI as a real directory.
+      const packaged = join(root, 'packaged')
+      mkdirSync(join(packaged, 'node_modules', '@deepseek-ai', 'dsh'), { recursive: true })
+      writeFileSync(join(packaged, 'node_modules', '@deepseek-ai', 'dsh', 'package.json'), '{}')
+      expect(lstatSync(join(packaged, 'node_modules', '@deepseek-ai', 'dsh')).isSymbolicLink()).toBe(false)
+      expect(isPackagedInstall(packaged)).toBe(true)
+
+      // A checkout holds the dsh CLI as a workspace symlink: not packaged.
+      const checkout = join(root, 'checkout')
+      mkdirSync(join(checkout, 'node_modules', '@deepseek-ai'), { recursive: true })
+      symlinkSync(join(packaged, 'node_modules', '@deepseek-ai', 'dsh'), join(checkout, 'node_modules', '@deepseek-ai', 'dsh'), 'junction')
+      expect(lstatSync(join(checkout, 'node_modules', '@deepseek-ai', 'dsh')).isSymbolicLink()).toBe(true)
+      expect(isPackagedInstall(checkout)).toBe(false)
+
+      // No dsh manifest at all: not packaged.
+      expect(isPackagedInstall(join(root, 'empty'))).toBe(false)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   it('infers build progress from workspace script output at every milestone', () => {

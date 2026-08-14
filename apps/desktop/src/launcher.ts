@@ -4,8 +4,9 @@
  */
 
 import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, lstatSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -13,6 +14,8 @@ const READY_URL_PATTERN = /(?:^|\r?\n)dsh web:\s+(http:\/\/127\.0\.0\.1:\d+)(?=\
 const DEFAULT_READY_TIMEOUT_MS = 60_000
 const TAIL_LIMIT = 8_000
 const REQUIRED_REPO_MARKERS = ['package.json', 'pnpm-lock.yaml', join('apps', 'cli', 'package.json')] as const
+/** The dsh CLI manifest inside a packaged app's node_modules (relative to the app root). */
+const PACKAGED_DEP_MARKER = join('node_modules', '@deepseek-ai', 'dsh', 'package.json')
 const BUILD_START_PROGRESS = 3
 const BUILD_DONE_PROGRESS = 86
 const SERVER_START_PROGRESS = 92
@@ -89,6 +92,12 @@ export interface HarnessBuildOptions {
 export interface StartHarnessWebServerOptions {
   /** Repository root containing the dsh workspace. Defaults to auto-detection. */
   repoRoot?: string
+  /**
+   * Whether this is a packaged install. Defaults to file-system detection:
+   * a packaged app materializes the dsh CLI under node_modules while the
+   * workspace layout symlinks it.
+   */
+  packaged?: boolean
   /** Startup timeout. Defaults to 60 seconds. */
   timeoutMs?: number
   /** Startup progress callback. */
@@ -147,6 +156,25 @@ export function isHarnessRepoRoot(path: string): boolean {
 }
 
 /**
+ * Whether `appRoot` is an installed app rather than a checkout. The packaged
+ * electron-builder layout materializes the dsh CLI package as a real
+ * directory under `node_modules/@deepseek-ai/dsh`, while the pnpm workspace
+ * layout used for development symlinks it to the checkout — so the link kind
+ * is the distinguishing signal.
+ * @param appRoot - the directory holding the desktop app's `package.json`.
+ * @returns true when the app is a packaged install.
+ */
+export function isPackagedInstall(appRoot: string): boolean {
+  const dshManifest = join(appRoot, PACKAGED_DEP_MARKER)
+  if (!existsSync(dshManifest)) return false
+  try {
+    return !lstatSync(dirname(dshManifest)).isSymbolicLink()
+  } catch {
+    return true
+  }
+}
+
+/**
  * Resolve the workspace root for the launched backend.
  * @param startDir - directory of the compiled desktop app.
  * @param env - process environment; `DSH_DESKTOP_REPO` overrides discovery.
@@ -184,8 +212,14 @@ export function resolveNodeExecutable(env: NodeJS.ProcessEnv = process.env): str
   return env.DSH_DESKTOP_NODE === undefined || env.DSH_DESKTOP_NODE === '' ? 'node' : env.DSH_DESKTOP_NODE
 }
 
-/** Resolve the pnpm executable used for launch-time workspace builds. */
+/**
+ * Resolve the pnpm executable used for launch-time workspace builds. The
+ * packaged launcher sets `DSH_PNPM` to the pnpm binary shipped inside the
+ * app, so a user machine never needs pnpm on PATH to manage plugins; an
+ * explicit `DSH_DESKTOP_PNPM` still outranks it for development.
+ */
 export function resolvePnpmExecutable(env: NodeJS.ProcessEnv = process.env): string {
+  if (env.DSH_PNPM !== undefined && env.DSH_PNPM !== '') return env.DSH_PNPM
   return env.DSH_DESKTOP_PNPM === undefined || env.DSH_DESKTOP_PNPM === '' ? 'pnpm' : env.DSH_DESKTOP_PNPM
 }
 
@@ -309,20 +343,65 @@ export function runHarnessBuild(options: HarnessBuildOptions = {}): Promise<void
   })
 }
 
-/** Build, start `dsh web --port 0`, and resolve after it prints the ready URL. */
-export async function startHarnessWebServer(options: StartHarnessWebServerOptions = {}): Promise<HarnessWebServer> {
-  const repoRoot = resolveLaunchRepoRoot(options.repoRoot)
-  const timeoutMs = options.timeoutMs ?? DEFAULT_READY_TIMEOUT_MS
-
-  const buildOptions: HarnessBuildOptions = { repoRoot }
-  if (options.onProgress !== undefined) buildOptions.onProgress = options.onProgress
-  await runHarnessBuild(buildOptions)
-  emitProgress(options.onProgress, 'server', SERVER_START_PROGRESS)
-
-  const child = spawn(resolveNodeExecutable(), [resolveDshBin(), 'web', '--host', '127.0.0.1', '--port', '0'], {
-    cwd: repoRoot,
+/**
+ * The packaged backend launch: run the dsh CLI on the Electron runtime
+ * itself (`ELECTRON_RUN_AS_NODE` turns the app binary into a plain Node
+ * process) with the user's home as the workspace, so an installed app needs
+ * neither a checkout nor a Node on PATH. The working directory seeds the
+ * sandbox workspace root and the project skill roots; the home is the one
+ * directory every user can write to without elevation.
+ * @param appRoot - the packaged app directory.
+ * @returns the backend command, working directory, and environment.
+ */
+function packagedBackendLaunch(appRoot: string): { command: string; cwd: string; env: NodeJS.ProcessEnv } {
+  const pnpm = packagedPnpmPath(appRoot)
+  return {
+    command: process.execPath,
+    cwd: homedir(),
     env: {
       ...process.env,
+      ELECTRON_RUN_AS_NODE: '1',
+      ...pnpm !== undefined && { DSH_PNPM: pnpm },
+    },
+  }
+}
+
+/** The pnpm binary shipped inside a packaged app, when present. */
+function packagedPnpmPath(appRoot: string): string | undefined {
+  const pnpm = join(dirname(appRoot), 'pnpm', 'pnpm.exe')
+  return existsSync(pnpm) ? pnpm : undefined
+}
+
+/** Build, start `dsh web --port 0`, and resolve after it prints the ready URL. */
+export async function startHarnessWebServer(options: StartHarnessWebServerOptions = {}): Promise<HarnessWebServer> {
+  const libDir = dirname(fileURLToPath(import.meta.url))
+  const appRoot = dirname(libDir)
+  const packaged = options.packaged ?? isPackagedInstall(appRoot)
+  const timeoutMs = options.timeoutMs ?? DEFAULT_READY_TIMEOUT_MS
+
+  let backend: { command: string; cwd: string; env: NodeJS.ProcessEnv }
+  if (packaged) {
+    // No launch-time build: the packaged node_modules already carries the
+    // built CLI, bundles, and web dist. The progress jumps straight to the
+    // server phase.
+    emitProgress(options.onProgress, 'server', SERVER_START_PROGRESS)
+    backend = packagedBackendLaunch(appRoot)
+  } else {
+    const repoRoot = resolveLaunchRepoRoot(options.repoRoot)
+    const buildOptions: HarnessBuildOptions = { repoRoot }
+    if (options.onProgress !== undefined) buildOptions.onProgress = options.onProgress
+    await runHarnessBuild(buildOptions)
+    emitProgress(options.onProgress, 'server', SERVER_START_PROGRESS)
+    backend = { command: resolveNodeExecutable(), cwd: repoRoot, env: process.env }
+  }
+
+  // The profile boot mounts a watch-only HMR instance for live user patches,
+  // which requires the internal module loader; the flag must sit in execArgv
+  // (NODE_OPTIONS is not guaranteed to land there on every runtime).
+  const child = spawn(backend.command, ['--expose-internals', resolveDshBin(), 'web', '--host', '127.0.0.1', '--port', '0'], {
+    cwd: backend.cwd,
+    env: {
+      ...backend.env,
       FORCE_COLOR: '0',
     },
     stdio: ['ignore', 'pipe', 'pipe'],

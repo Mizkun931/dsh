@@ -175,7 +175,7 @@ async function bootDesktop(): Promise<void> {
   splashWindow = createSplashWindow()
   const splashMinimum = delay(SPLASH_MINIMUM_MS)
   try {
-    server = await startHarnessWebServer({ onProgress: updateSplashProgress })
+    server = await startHarnessWebServer({ onProgress: updateSplashProgress, packaged: app.isPackaged })
     mainWindow = createMainWindow(server.url)
     await mainWindow.loadURL(server.url)
     // The client-side boot has no progress events; estimate forward from
