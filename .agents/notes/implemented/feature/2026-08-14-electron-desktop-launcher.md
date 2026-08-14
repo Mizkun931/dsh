@@ -10,9 +10,9 @@ DeepSeek Harness already has a browser GUI backed by `dsh web`, but a desktop la
 
 ## Decision
 
-`apps/desktop` is an Electron workspace package that launches the existing Web profile. Its main process starts the built `@deepseek-ai/dsh` CLI with `web --host 127.0.0.1 --port 0` through `DSH_DESKTOP_NODE` or `node`, waits for the `dsh web:` readiness URL, and loads that loopback URL into a sandboxed `BrowserWindow`. The Electron renderer has `nodeIntegration: false`, `contextIsolation: true`, and `sandbox: true`; external navigations leave through the operating system browser instead of receiving Node capabilities.
+`apps/desktop` is an Electron workspace package that launches the existing Web profile. Its main process opens the splash window before compiling workspace artifacts, runs `pnpm --dir <repo> run build` in the background through `DSH_DESKTOP_PNPM` or `pnpm`, then starts the built `@deepseek-ai/dsh` CLI with `web --host 127.0.0.1 --port 0` through `DSH_DESKTOP_NODE` or `node`, waits for the `dsh web:` readiness URL, and loads that loopback URL into a sandboxed `BrowserWindow`. The Electron renderer has `nodeIntegration: false`, `contextIsolation: true`, and `sandbox: true`; external navigations leave through the operating system browser instead of receiving Node capabilities.
 
-The desktop package owns a frameless splash window in `apps/desktop/assets/splash.html`. The splash displays the DeepSeek logo and a bounded progress animation while the local Web host binds and settles. The Web shell loading page in `packages/client/web/src/AppRoot.tsx` uses the same logo-led loading language for the plugin-loading interval after the main window loads.
+The desktop package owns a frameless splash window in `apps/desktop/assets/splash.html`. The splash displays only the DeepSeek logo, the `DeepSeek` wordmark, the `探索未至之境` tagline, and a progress bar. The bar width is driven by main-process progress events parsed from the launch-time build and Web-host readiness phases, so the foreground startup animation stays aligned with the background work. The Web shell loading page in `packages/client/web/src/AppRoot.tsx` uses the same logo-led loading language for the plugin-loading interval after the main window loads.
 
 The backend process is stopped during `before-quit`. On Windows the launcher uses `taskkill.exe /pid <pid> /t /f` so child processes under the Web host do not keep the port alive after the app closes. Electron Builder keeps the app unpacked and skips Electron-native dependency rebuilds because the backend dependencies run under the Node subprocess, not inside the Electron renderer.
 
@@ -28,8 +28,8 @@ The backend process is stopped during `before-quit`. On Windows the launcher use
 
 The desktop app reuses the shipped Web application and backend graph, so it inherits the Web profile's behavior and test coverage instead of creating a second composition. The package can be developed and packaged as an Electron app without changing agent packages or session protocols.
 
-The launcher still depends on built workspace artifacts, a Node executable, and the `dsh web` HTTP transport. It is a desktop packaging layer, not a native Electron transport. A future file-loaded renderer plus IPC bridge can replace the spawned Web host when that transport exists.
+The launcher still depends on a source checkout, `pnpm`, a Node executable, and the `dsh web` HTTP transport. It is a desktop packaging layer, not a native Electron transport. A future file-loaded renderer plus IPC bridge can replace the spawned Web host when that transport exists.
 
 ## Verification
 
-The desktop package has unit coverage for readiness URL parsing, repository-root detection, and backend Node executable selection. The Web shell keeps its AppRoot boot-gate tests, and desktop manual verification uses `pnpm desktop:dev` to confirm splash startup, Web URL readiness, main-window loading, and backend shutdown on quit.
+The desktop package has unit coverage for readiness URL parsing, repository-root detection, backend executable selection, and build-progress output parsing. The Web shell keeps its AppRoot boot-gate tests, and desktop manual verification uses `pnpm desktop:dev` to confirm splash startup, launch-time build progress, Web URL readiness, main-window loading, and backend shutdown on quit.

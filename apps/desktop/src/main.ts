@@ -5,27 +5,36 @@
 
 import { app, BrowserWindow, Menu, dialog, shell } from 'electron'
 import { fileURLToPath } from 'node:url'
-import { startHarnessWebServer, stopHarnessWebServer, type HarnessWebServer } from './launcher.ts'
+import {
+  startHarnessWebServer,
+  stopHarnessWebServer,
+  type HarnessStartupProgress,
+  type HarnessWebServer,
+} from './launcher.ts'
 
 const APP_TITLE = 'DeepSeek Harness'
 const DEFAULT_WINDOW_WIDTH = 1280
 const DEFAULT_WINDOW_HEIGHT = 860
+const SPLASH_MINIMUM_MS = 1_100
+const SPLASH_FADE_MS = 360
 
 let server: HarnessWebServer | undefined
 let mainWindow: BrowserWindow | undefined
 let splashWindow: BrowserWindow | undefined
+let latestSplashProgress = 0
 
 const assetPath = (name: string): string => fileURLToPath(new URL(`../assets/${name}`, import.meta.url))
+const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
 
 function createSplashWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 380,
-    height: 320,
+    width: 440,
+    height: 260,
     show: false,
     frame: false,
     resizable: false,
     movable: true,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#060a14',
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -33,6 +42,9 @@ function createSplashWindow(): BrowserWindow {
     },
   })
   void win.loadFile(assetPath('splash.html'))
+  win.webContents.once('did-finish-load', () => {
+    void applySplashProgress(win)
+  })
   win.once('ready-to-show', () => { win.show() })
   return win
 }
@@ -75,26 +87,56 @@ function sameOrigin(target: string, origin: string): boolean {
   }
 }
 
-async function showSplashError(message: string): Promise<void> {
+function clampProgress(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value)))
+}
+
+async function applySplashProgress(win: BrowserWindow | undefined = splashWindow): Promise<void> {
+  if (win === undefined || win.isDestroyed()) return
+  await win.webContents.executeJavaScript(
+    `window.setDeepSeekSplashProgress?.(${JSON.stringify(latestSplashProgress)});`,
+  ).then(() => undefined, () => undefined)
+}
+
+function updateSplashProgress(progress: HarnessStartupProgress): void {
+  latestSplashProgress = clampProgress(Math.max(latestSplashProgress, progress.percent))
+  void applySplashProgress()
+}
+
+async function showSplashError(): Promise<void> {
   if (splashWindow === undefined || splashWindow.isDestroyed()) return
   await splashWindow.webContents.executeJavaScript(
-    `document.body.dataset.state = "error"; document.querySelector("[data-status]").textContent = ${JSON.stringify(message)};`,
-  )
+    'document.body.dataset.state = "error";',
+  ).then(() => undefined, () => undefined)
+}
+
+async function dismissSplashWindow(): Promise<void> {
+  const win = splashWindow
+  if (win === undefined || win.isDestroyed()) return
+  await win.webContents.executeJavaScript(
+    'document.body.dataset.state = "closing";',
+  ).then(() => undefined, () => undefined)
+  await delay(SPLASH_FADE_MS)
+  if (!win.isDestroyed()) win.close()
+  if (splashWindow === win) splashWindow = undefined
 }
 
 async function bootDesktop(): Promise<void> {
   Menu.setApplicationMenu(null)
   splashWindow = createSplashWindow()
+  const splashMinimum = delay(SPLASH_MINIMUM_MS)
   try {
-    server = await startHarnessWebServer()
+    server = await startHarnessWebServer({ onProgress: updateSplashProgress })
     mainWindow = createMainWindow(server.url)
     await mainWindow.loadURL(server.url)
+    await splashMinimum
     if (!mainWindow.isDestroyed()) mainWindow.show()
-    splashWindow?.close()
-    splashWindow = undefined
+    latestSplashProgress = 100
+    await applySplashProgress()
+    await dismissSplashWindow()
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    await showSplashError(message)
+    await showSplashError()
     dialog.showErrorBox(APP_TITLE, message)
     app.quit()
   }

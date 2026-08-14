@@ -19,7 +19,7 @@
   ],
   "scripts": {
     "build": "tsc -b tsconfig.json",
-    "dev": "pnpm --dir ../.. run build && pnpm run build && electron .",
+    "dev": "pnpm run build && electron .",
     "test": "pnpm --dir ../.. exec vitest run apps/desktop/tests",
     "pack:win": "pnpm --dir ../.. run build && pnpm run build && electron-builder --win dir",
     "dist:win": "pnpm --dir ../.. run build && pnpm run build && electron-builder --win nsis"
