@@ -23,8 +23,10 @@
 
       html,
       body {
-        width: 100%;
-        height: 100%;
+        width: 100vw;
+        min-width: 100vw;
+        height: 100vh;
+        min-height: 100dvh;
         margin: 0;
       }
 
@@ -43,7 +45,10 @@
       }
 
       .scene {
-        width: 100%;
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100dvh;
         min-height: 100dvh;
         display: grid;
         place-items: center;
@@ -60,12 +65,30 @@
       }
 
       .brand-row {
+        position: relative;
         max-width: 92vw;
         display: flex;
         align-items: center;
         justify-content: center;
         gap: clamp(7px, 1.45vmin, 16px);
         filter: drop-shadow(0 20px 54px rgb(27 45 104 / 14%));
+        isolation: isolate;
+      }
+
+      .brand-row::before {
+        content: "";
+        position: absolute;
+        inset: clamp(-22px, -3.4vmin, -14px) clamp(-34px, -5.2vmin, -20px);
+        z-index: -1;
+        border: 1px solid rgb(77 107 254 / 14%);
+        border-radius: 999px;
+        background:
+          radial-gradient(ellipse at center, rgb(77 107 254 / 16%), transparent 58%),
+          linear-gradient(90deg, transparent, rgb(37 168 255 / 11%), transparent);
+        opacity: 0;
+        transform: scale(0.92);
+        animation: brand-aura 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite 940ms;
+        pointer-events: none;
       }
 
       .brand-piece {
@@ -150,28 +173,80 @@
       }
 
       .progress {
+        position: relative;
         width: min(46vw, 420px);
         min-width: min(260px, 70vw);
-        height: clamp(3px, 0.44vmin, 5px);
+        height: clamp(7px, 0.9vmin, 10px);
         overflow: hidden;
         border-radius: 999px;
-        background: var(--line);
+        background:
+          linear-gradient(180deg, rgb(255 255 255 / 62%), rgb(255 255 255 / 12%)),
+          var(--line);
         box-shadow:
           inset 0 1px 0 rgb(255 255 255 / 70%),
-          0 15px 36px rgb(77 107 254 / 10%);
+          inset 0 -1px 0 rgb(77 107 254 / 8%),
+          0 15px 36px rgb(77 107 254 / 12%);
       }
 
       .progress-fill {
-        position: relative;
+        position: absolute;
+        inset: 0;
         display: block;
         width: 100%;
         height: 100%;
         border-radius: inherit;
         background: linear-gradient(90deg, var(--brand), var(--brand-sky));
-        box-shadow: 0 7px 18px rgb(77 107 254 / 28%);
+        box-shadow:
+          0 4px 14px rgb(77 107 254 / 34%),
+          0 7px 18px rgb(77 107 254 / 28%);
         transform: scaleX(0);
         transform-origin: left center;
-        transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+        transition: transform 520ms cubic-bezier(0.16, 1, 0.3, 1);
+        will-change: transform;
+      }
+
+      .progress-shimmer {
+        position: absolute;
+        inset: 0 auto 0 0;
+        display: block;
+        width: 0%;
+        border-radius: inherit;
+        overflow: hidden;
+        opacity: 0;
+        transition:
+          width 520ms cubic-bezier(0.16, 1, 0.3, 1),
+          opacity 180ms ease;
+        pointer-events: none;
+      }
+
+      .progress-shimmer::before {
+        content: "";
+        position: absolute;
+        top: -60%;
+        bottom: -60%;
+        left: -46%;
+        width: 48%;
+        border-radius: 999px;
+        background:
+          linear-gradient(
+            105deg,
+            transparent 0%,
+            rgb(255 255 255 / 0%) 18%,
+            rgb(255 255 255 / 88%) 47%,
+            rgb(145 211 255 / 78%) 56%,
+            rgb(255 255 255 / 0%) 78%,
+            transparent 100%
+          );
+        filter: blur(0.5px);
+        transform: translateX(-120%) skewX(-18deg);
+      }
+
+      .progress-shimmer.is-scanning {
+        opacity: 1;
+      }
+
+      .progress-shimmer.is-scanning::before {
+        animation: progress-scan 980ms cubic-bezier(0.33, 0, 0.2, 1) both;
       }
 
       body[data-state="closing"] .scene {
@@ -209,6 +284,33 @@
           opacity: 1;
           transform: translateY(0) scale(1);
           filter: blur(0);
+        }
+      }
+
+      @keyframes brand-aura {
+        0% {
+          opacity: 0;
+          transform: scale(0.92);
+        }
+        34% {
+          opacity: 0.8;
+          transform: scale(1);
+        }
+        100% {
+          opacity: 0;
+          transform: scale(1.16);
+        }
+      }
+
+      @keyframes progress-scan {
+        0% {
+          transform: translateX(-120%) skewX(-18deg);
+        }
+        52% {
+          transform: translateX(185%) skewX(-18deg);
+        }
+        100% {
+          transform: translateX(185%) skewX(-18deg);
         }
       }
 
@@ -254,7 +356,13 @@
           filter: none;
         }
 
-        .progress-fill {
+        .brand-row::before,
+        .progress-shimmer::before {
+          animation: none;
+        }
+
+        .progress-fill,
+        .progress-shimmer {
           transition: none;
         }
 
@@ -289,16 +397,28 @@
         </div>
         <div class="progress" aria-hidden="true">
           <span class="progress-fill" data-progress></span>
+          <span class="progress-shimmer" data-progress-shimmer></span>
         </div>
       </section>
     </main>
     <script>
       const progressFill = document.querySelector("[data-progress]");
+      const progressShimmer = document.querySelector("[data-progress-shimmer]");
+      let progressScanTimer;
 
       window.setDeepSeekSplashProgress = value => {
         const numeric = Number(value);
         const percent = Number.isFinite(numeric) ? Math.min(100, Math.max(0, numeric)) : 0;
         progressFill.style.transform = `scaleX(${percent / 100})`;
+        progressShimmer.style.width = `${percent}%`;
+        window.clearTimeout(progressScanTimer);
+        progressShimmer.classList.remove("is-scanning");
+        if (percent <= 0) return;
+        void progressShimmer.offsetWidth;
+        progressShimmer.classList.add("is-scanning");
+        progressScanTimer = window.setTimeout(() => {
+          progressShimmer.classList.remove("is-scanning");
+        }, 1_020);
       };
     </script>
   </body>

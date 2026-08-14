@@ -3,7 +3,7 @@
  * @module @deepseek-ai/dsh-desktop/main
  */
 
-import { app, BrowserWindow, Menu, dialog, shell } from 'electron'
+import { app, BrowserWindow, Menu, dialog, screen, shell } from 'electron'
 import { fileURLToPath } from 'node:url'
 import {
   startHarnessWebServer,
@@ -27,12 +27,18 @@ const assetPath = (name: string): string => fileURLToPath(new URL(`../assets/${n
 const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
 
 function createSplashWindow(): BrowserWindow {
+  const { bounds } = screen.getPrimaryDisplay()
   const win = new BrowserWindow({
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
     show: false,
     frame: false,
     fullscreen: true,
+    fullscreenable: true,
     resizable: false,
-    movable: true,
+    movable: false,
     backgroundColor: '#fbfdff',
     webPreferences: {
       contextIsolation: true,
@@ -44,7 +50,12 @@ function createSplashWindow(): BrowserWindow {
   win.webContents.once('did-finish-load', () => {
     void applySplashProgress(win)
   })
-  win.once('ready-to-show', () => { win.show() })
+  win.once('ready-to-show', () => {
+    win.setBounds(bounds, false)
+    win.setFullScreen(true)
+    win.show()
+    win.focus()
+  })
   return win
 }
 
