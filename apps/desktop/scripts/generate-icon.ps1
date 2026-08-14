@@ -1,7 +1,7 @@
 # Generates the DeepSeek Harness desktop app icon set from the blue whale
-# mark: white background, black whale. Outputs assets/icon.png (512px, runtime
-# window icon) and build/icon.ico (16..256px PNG-compressed, electron-builder
-# Windows package icon).
+# mark: white rounded-tile background, black whale. Outputs assets/icon.png
+# (512px, runtime window icon) and build/icon.ico (16..256px PNG-compressed,
+# electron-builder Windows package icon).
 # Usage: pwsh -File scripts/generate-icon.ps1
 
 $ErrorActionPreference = 'Stop'
@@ -14,6 +14,8 @@ $sourcePng = Join-Path $assetsDir 'deepseek-icon-blue.png'
 $outPng = Join-Path $assetsDir 'icon.png'
 $outIco = Join-Path $buildDir 'icon.ico'
 $icoSizes = 16, 32, 48, 64, 128, 256
+# Corner radius as a fraction of the tile size (Windows 11 Fluent style).
+$cornerRatio = 0.225
 
 if (-not (Test-Path $sourcePng)) {
   throw "Source whale mark not found: $sourcePng"
@@ -36,13 +38,30 @@ try {
   $src.Dispose()
 }
 
-function New-ScaledBitmap([System.Drawing.Bitmap]$bitmap, [int]$size, [single]$paddingRatio) {
-  $result = New-Object System.Drawing.Bitmap($size, $size)
+function New-RoundedRectPath([single]$size, [single]$radius) {
+  $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+  $diameter = $radius * 2.0
+  $path.AddArc(0, 0, $diameter, $diameter, 180, 90)
+  $path.AddArc($size - $diameter, 0, $diameter, $diameter, 270, 90)
+  $path.AddArc($size - $diameter, $size - $diameter, $diameter, $diameter, 0, 90)
+  $path.AddArc(0, $size - $diameter, $diameter, $diameter, 90, 90)
+  $path.CloseFigure()
+  return $path
+}
+
+function New-ScaledBitmap([System.Drawing.Bitmap]$bitmap, [int]$size, [single]$paddingRatio, [single]$cornerRatio) {
+  $result = New-Object System.Drawing.Bitmap($size, $size, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
   $graphics = [System.Drawing.Graphics]::FromImage($result)
-  $graphics.Clear([System.Drawing.Color]::White)
+  $graphics.Clear([System.Drawing.Color]::Transparent)
   $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
   $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
   $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+  # Rounded white tile with transparent corners; the whale mark is drawn on top.
+  $background = New-RoundedRectPath $size ($size * $cornerRatio)
+  $white = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
+  $graphics.FillPath($white, $background)
+  $white.Dispose()
+  $background.Dispose()
   $scale = [single]$size / [single][Math]::Max($bitmap.Width, $bitmap.Height) * (1.0 - $paddingRatio)
   $w = [single]$bitmap.Width * $scale
   $h = [single]$bitmap.Height * $scale
@@ -56,18 +75,20 @@ function New-ScaledBitmap([System.Drawing.Bitmap]$bitmap, [int]$size, [single]$p
 function Get-PngBytes([System.Drawing.Bitmap]$bitmap) {
   $stream = New-Object System.IO.MemoryStream
   $bitmap.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png)
-  return $stream.ToArray()
+  # Comma keeps the byte[] a single object; without it PowerShell flattens
+  # the array into individual bytes and BinaryWriter.Write truncates the ICO.
+  return ,$stream.ToArray()
 }
 
 # 2) Runtime window icon (512px).
-$icon512 = New-ScaledBitmap $flat 512 0.06
+$icon512 = New-ScaledBitmap $flat 512 0.06 $cornerRatio
 $icon512.Save($outPng, [System.Drawing.Imaging.ImageFormat]::Png)
 
 # 3) Multi-size ICO with PNG-compressed entries.
 $entries = @()
 foreach ($size in $icoSizes) {
-  $scaled = New-ScaledBitmap $flat $size 0.06
-  $entries += [pscustomobject]@{ Size = $size; Bytes = Get-PngBytes $scaled }
+  $scaled = New-ScaledBitmap $flat $size 0.06 $cornerRatio
+  $entries += [pscustomobject]@{ Size = $size; Bytes = [byte[]](Get-PngBytes $scaled) }
   $scaled.Dispose()
 }
 $flat.Dispose()
