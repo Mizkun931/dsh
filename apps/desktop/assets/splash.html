@@ -366,6 +366,10 @@
           transition: none;
         }
 
+        .progress-shimmer {
+          opacity: 0;
+        }
+
         body[data-state="closing"] .scene {
           filter: none;
           transition: opacity 180ms ease;
@@ -404,21 +408,46 @@
     <script>
       const progressFill = document.querySelector("[data-progress]");
       const progressShimmer = document.querySelector("[data-progress-shimmer]");
+      const SHIMMER_INTERVAL_MS = 1_560;
+      const SHIMMER_DURATION_MS = 980;
+      let progressScanInterval;
       let progressScanTimer;
+
+      const runProgressScan = () => {
+        progressShimmer.classList.remove("is-scanning");
+        void progressShimmer.offsetWidth;
+        progressShimmer.classList.add("is-scanning");
+        window.clearTimeout(progressScanTimer);
+        progressScanTimer = window.setTimeout(() => {
+          progressShimmer.classList.remove("is-scanning");
+        }, SHIMMER_DURATION_MS + 40);
+      };
+
+      const startProgressScan = () => {
+        if (progressScanInterval !== undefined) return;
+        runProgressScan();
+        progressScanInterval = window.setInterval(runProgressScan, SHIMMER_INTERVAL_MS);
+      };
+
+      const stopProgressScan = () => {
+        if (progressScanInterval !== undefined) {
+          window.clearInterval(progressScanInterval);
+          progressScanInterval = undefined;
+        }
+        window.clearTimeout(progressScanTimer);
+        progressShimmer.classList.remove("is-scanning");
+      };
 
       window.setDeepSeekSplashProgress = value => {
         const numeric = Number(value);
         const percent = Number.isFinite(numeric) ? Math.min(100, Math.max(0, numeric)) : 0;
         progressFill.style.transform = `scaleX(${percent / 100})`;
         progressShimmer.style.width = `${percent}%`;
-        window.clearTimeout(progressScanTimer);
-        progressShimmer.classList.remove("is-scanning");
-        if (percent <= 0) return;
-        void progressShimmer.offsetWidth;
-        progressShimmer.classList.add("is-scanning");
-        progressScanTimer = window.setTimeout(() => {
-          progressShimmer.classList.remove("is-scanning");
-        }, 1_020);
+        if (percent > 0 && percent < 100) {
+          startProgressScan();
+          return;
+        }
+        stopProgressScan();
       };
     </script>
   </body>

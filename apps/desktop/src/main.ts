@@ -17,6 +17,8 @@ const DEFAULT_WINDOW_WIDTH = 1280
 const DEFAULT_WINDOW_HEIGHT = 860
 const SPLASH_MINIMUM_MS = 1_100
 const SPLASH_FADE_MS = 360
+const MAIN_APP_READY_TIMEOUT_MS = 30_000
+const MAIN_APP_READY_STABLE_MS = 260
 
 let server: HarnessWebServer | undefined
 let mainWindow: BrowserWindow | undefined
@@ -25,6 +27,11 @@ let latestSplashProgress = 0
 
 const assetPath = (name: string): string => fileURLToPath(new URL(`../assets/${name}`, import.meta.url))
 const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
+
+interface MainAppReadyResult {
+  state: 'ready' | 'failed' | 'timeout'
+  detail?: string
+}
 
 function createSplashWindow(): BrowserWindow {
   const { bounds } = screen.getPrimaryDisplay()
@@ -113,6 +120,51 @@ function updateSplashProgress(progress: HarnessStartupProgress): void {
   void applySplashProgress()
 }
 
+async function waitForMainAppReady(win: BrowserWindow): Promise<void> {
+  if (win.isDestroyed()) return
+  const result = await win.webContents.executeJavaScript(`
+    (() => new Promise(resolve => {
+      const deadline = Date.now() + ${String(MAIN_APP_READY_TIMEOUT_MS)};
+      const stableMs = ${String(MAIN_APP_READY_STABLE_MS)};
+      const loadingText = "Loading plugins\\u2026";
+      const fallbackLoadingText = "Loading plugins...";
+      const failureText = "Failed to load plugins";
+      let stableSince;
+
+      const tick = () => {
+        const text = document.body?.innerText ?? "";
+        if (text.includes(failureText)) {
+          resolve({ state: "failed", detail: text.slice(0, 4000) });
+          return;
+        }
+
+        const root = document.getElementById("root");
+        const hasRootContent = (root?.childElementCount ?? 0) > 0;
+        const isBootLoading = text.includes(loadingText) || text.includes(fallbackLoadingText);
+        if (hasRootContent && !isBootLoading) {
+          stableSince ??= Date.now();
+          if (Date.now() - stableSince >= stableMs) {
+            resolve({ state: "ready" });
+            return;
+          }
+        } else {
+          stableSince = undefined;
+        }
+
+        if (Date.now() >= deadline) {
+          resolve({ state: "timeout" });
+          return;
+        }
+        window.setTimeout(tick, 50);
+      };
+      tick();
+    }))();
+  `) as MainAppReadyResult
+  if (result.state === 'failed') {
+    throw new Error(`DeepSeek Harness Web boot failed.\n${result.detail ?? ''}`)
+  }
+}
+
 async function showSplashError(): Promise<void> {
   if (splashWindow === undefined || splashWindow.isDestroyed()) return
   await splashWindow.webContents.executeJavaScript(
@@ -139,10 +191,11 @@ async function bootDesktop(): Promise<void> {
     server = await startHarnessWebServer({ onProgress: updateSplashProgress })
     mainWindow = createMainWindow(server.url)
     await mainWindow.loadURL(server.url)
+    await waitForMainAppReady(mainWindow)
     await splashMinimum
-    if (!mainWindow.isDestroyed()) mainWindow.show()
     latestSplashProgress = 100
     await applySplashProgress()
+    if (!mainWindow.isDestroyed()) mainWindow.show()
     await dismissSplashWindow()
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
