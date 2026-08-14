@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DeepSeek Harness</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --surface: #f8fafc;
+        --surface-raised: #ffffff;
+        --text: #0f1115;
+        --muted: #667085;
+        --line: rgb(15 17 21 / 10%);
+        --accent: #4176e6;
+        --accent-soft: rgb(65 118 230 / 14%);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --surface: #151517;
+          --surface-raised: #232324;
+          --text: #f5f6f7;
+          --muted: #adb2b8;
+          --line: rgb(255 255 255 / 12%);
+          --accent: #679efe;
+          --accent-soft: rgb(103 158 254 / 20%);
+        }
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+      }
+
+      body {
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 50% 32%, var(--accent-soft), transparent 42%),
+          var(--surface);
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .shell {
+        width: 100%;
+        height: 100%;
+        display: grid;
+        place-items: center;
+      }
+
+      .panel {
+        width: 260px;
+        display: grid;
+        justify-items: center;
+        gap: 18px;
+      }
+
+      .mark {
+        position: relative;
+        width: 96px;
+        height: 96px;
+        display: grid;
+        place-items: center;
+        isolation: isolate;
+      }
+
+      .mark::before,
+      .mark::after {
+        content: "";
+        position: absolute;
+        inset: 7px;
+        border-radius: 28px;
+        transform: rotate(45deg);
+      }
+
+      .mark::before {
+        background: var(--accent-soft);
+        animation: breathe 1600ms cubic-bezier(.16, 1, .3, 1) infinite;
+      }
+
+      .mark::after {
+        border: 1px solid var(--line);
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / 26%);
+      }
+
+      .logo {
+        position: relative;
+        width: 48px;
+        height: 48px;
+        color: var(--text);
+        z-index: 1;
+        animation: settle 700ms cubic-bezier(.16, 1, .3, 1) both;
+      }
+
+      .wordmark {
+        font-size: 16px;
+        line-height: 24px;
+        font-weight: 650;
+      }
+
+      .status {
+        min-height: 18px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 18px;
+        text-align: center;
+      }
+
+      .bar {
+        width: 168px;
+        height: 2px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: var(--line);
+      }
+
+      .bar span {
+        display: block;
+        width: 62%;
+        height: 100%;
+        border-radius: inherit;
+        background: var(--accent);
+        transform-origin: center;
+        animation: progress-pulse 1200ms cubic-bezier(.16, 1, .3, 1) infinite;
+      }
+
+      body[data-state="error"] .bar span,
+      body[data-state="error"] .mark::before,
+      body[data-state="error"] .logo {
+        animation: none;
+      }
+
+      body[data-state="error"] .status {
+        color: #c2410c;
+      }
+
+      @keyframes breathe {
+        0%,
+        100% { transform: rotate(45deg) scale(.92); opacity: .74; }
+        50% { transform: rotate(45deg) scale(1.05); opacity: 1; }
+      }
+
+      @keyframes settle {
+        from { transform: translateY(8px) scale(.96); opacity: 0; filter: blur(8px); }
+        to { transform: translateY(0) scale(1); opacity: 1; filter: blur(0); }
+      }
+
+      @keyframes progress-pulse {
+        0%,
+        100% { transform: scaleX(.58); opacity: .68; }
+        50% { transform: scaleX(1); opacity: 1; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .mark::before,
+        .logo,
+        .bar span {
+          animation: none;
+        }
+
+        .bar span {
+          width: 62%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="panel" aria-label="DeepSeek Harness startup">
+        <div class="mark" aria-hidden="true">
+          <img class="logo" src="./logo.svg" alt="" />
+        </div>
+        <div class="wordmark">DeepSeek Harness</div>
+        <div class="bar" aria-hidden="true"><span></span></div>
+        <div class="status" data-status>Starting local web host...</div>
+      </section>
+    </main>
+  </body>
+</html>

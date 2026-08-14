@@ -1,0 +1,60 @@
+{
+  "name": "@deepseek-ai/dsh-desktop",
+  "description": "Electron desktop launcher for the DeepSeek Harness Web profile",
+  "version": "0.1.0-rc.5",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "directory": "apps/desktop"
+  },
+  "type": "module",
+  "main": "lib/main.js",
+  "files": [
+    "assets/**",
+    "lib/**",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "dev": "pnpm --dir ../.. run build && pnpm run build && electron .",
+    "test": "pnpm --dir ../.. exec vitest run apps/desktop/tests",
+    "pack:win": "pnpm --dir ../.. run build && pnpm run build && electron-builder --win dir",
+    "dist:win": "pnpm --dir ../.. run build && pnpm run build && electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "ai.deepseek.harness.desktop",
+    "productName": "DeepSeek Harness",
+    "asar": false,
+    "npmRebuild": false,
+    "directories": {
+      "output": "dist-desktop"
+    },
+    "files": [
+      "assets/**",
+      "lib/**",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "dir"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh": "workspace:^"
+  },
+  "devDependencies": {
+    "electron": "^43.4.0",
+    "electron-builder": "^26.15.3"
+  },
+  "license": "MIT"
+}
