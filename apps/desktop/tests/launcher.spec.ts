@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import {
-  estimateProgressGain,
+  estimateProgress,
   isHarnessRepoRoot,
   parseReadyUrl,
   progressForBuildOutput,
@@ -55,14 +55,24 @@ describe('desktop launcher helpers', () => {
       'ℹ tsdown v0.22.2 powered by rolldown v1.1.1',
       'ℹ tsdown v0.22.2 powered by rolldown v1.1.1',
     ].join('\n'))).toBe(58)
-    expect(progressForBuildOutput('build:lib\nbuild:web')).toBe(70)
+    expect(progressForBuildOutput([
+      '> @deepseek-ai/dsh-root@0.1.0-rc.5 build:web',
+      '> pnpm --filter @deepseek-ai/dsh-web-frontend run build',
+    ].join('\n'))).toBe(70)
     expect(progressForBuildOutput('✓ built in 2.31s')).toBe(80)
   })
 
-  it('estimates silent-phase progress gain capped below the next milestone', () => {
-    expect(estimateProgressGain(0)).toBe(0)
-    expect(estimateProgressGain(350)).toBeCloseTo(1)
-    expect(estimateProgressGain(3_500)).toBeCloseTo(9.9)
-    expect(estimateProgressGain(60_000)).toBeCloseTo(9.9)
+  it('ignores npm/pnpm command echo lines that name scripts before they run', () => {
+    expect(progressForBuildOutput('> npm run build:lib && npm run build:web')).toBeUndefined()
+    expect(progressForBuildOutput('$ npm run build:lib && npm run build:web')).toBeUndefined()
+    expect(progressForBuildOutput('> tsc -b tsconfig.host.json && tsdown --env.DSH_BUILD_FACE host')).toBeUndefined()
+  })
+
+  it('estimates silent-phase progress as an approach to the next milestone', () => {
+    expect(estimateProgress(24, 36, 0)).toBe(24)
+    expect(estimateProgress(24, 36, 4_000)).toBeGreaterThan(24)
+    expect(estimateProgress(24, 36, 4_000)).toBeLessThan(35.9)
+    expect(estimateProgress(24, 36, 60_000)).toBeGreaterThan(35.5)
+    expect(estimateProgress(24, 36, 60_000)).toBeLessThan(35.9)
   })
 })

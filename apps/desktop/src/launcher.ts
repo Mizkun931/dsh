@@ -33,24 +33,27 @@ interface BuildProgressMarker {
   occurrences?: number
 }
 
-/** Build milestones, in the order the workspace build emits them (npm script lines, tsdown face banners, vite completion). */
+/**
+ * Build milestones, in the order the workspace build emits them. Script
+ * markers match only the npm script banner (`> pkg@version script`): the
+ * command echo line (`> npm run build:lib && npm run build:web`) prints at
+ * startup and would otherwise mark every script as started immediately.
+ */
 const BUILD_PROGRESS_MARKERS: readonly BuildProgressMarker[] = [
-  { pattern: /\bbuild:lib\b/gu, percent: 14 },
-  { pattern: /\bbuild:lib:host\b/gu, percent: 24 },
+  { pattern: /^>\s*\S+@\d\S*\s+build:lib\b/gmu, percent: 14 },
+  { pattern: /^>\s*\S+@\d\S*\s+build:lib:host\b/gmu, percent: 24 },
   { pattern: /tsdown v\d/gu, percent: 36 },
-  { pattern: /\bbuild:lib:client\b/gu, percent: 46 },
+  { pattern: /^>\s*\S+@\d\S*\s+build:lib:client\b/gmu, percent: 46 },
   { pattern: /tsdown v\d/gu, percent: 58, occurrences: 2 },
-  { pattern: /\bbuild:web\b/gu, percent: 70 },
+  { pattern: /^>\s*\S+@\d\S*\s+build:web\b/gmu, percent: 70 },
   { pattern: /\bbuilt in\b/gu, percent: 80 },
 ]
 
 /** Build milestones in ascending percent order (deduplicated). */
 const BUILD_MILESTONES = [...new Set(BUILD_PROGRESS_MARKERS.map(marker => marker.percent))].sort((a, b) => a - b)
 
-/** Estimated milliseconds each percent of silent-phase progress takes. */
-const ESTIMATE_MS_PER_PERCENT = 350
-/** Estimated percent a silent phase may add before the next real milestone (never reaches it). */
-const ESTIMATE_MAX_GAIN = 9.9
+/** Exponential approach time constant for silent-phase estimation (ms). */
+const ESTIMATE_TAU_MS = 4_000
 
 /** A launched Web profile process and its ready browser URL. */
 export interface HarnessWebServer {
@@ -124,12 +127,18 @@ function progressStepsForBuildOutput(output: string): number[] {
 }
 
 /**
- * Estimated progress gain for a phase with no real progress events.
+ * Estimated progress during a phase with no real progress events: an
+ * exponential approach from the last real milestone toward the next one,
+ * so the bar keeps creeping forward without ever reaching the next
+ * milestone. Real events realign it instantly.
+ * @param base - percent of the last real milestone.
+ * @param next - percent of the next real milestone.
  * @param elapsedMs - time since the last real progress event.
- * @returns the estimated percent gain, capped just below the next milestone.
+ * @returns the estimated percent, strictly between base and next.
  */
-export function estimateProgressGain(elapsedMs: number): number {
-  return Math.min(ESTIMATE_MAX_GAIN, elapsedMs / ESTIMATE_MS_PER_PERCENT)
+export function estimateProgress(base: number, next: number, elapsedMs: number): number {
+  const gap = next - base
+  return next - 0.1 - (gap - 0.1) * Math.exp(-elapsedMs / ESTIMATE_TAU_MS)
 }
 
 /** Return whether a directory has the repo files the desktop launcher needs. */
@@ -240,12 +249,11 @@ export function runHarnessBuild(options: HarnessBuildOptions = {}): Promise<void
   emitProgress(onProgress, 'build', lastProgress)
 
   // Silent phases (tsc, tsdown, vite) emit no progress lines; estimate
-  // forward between milestones so the bar keeps moving, capped just below
-  // the next real milestone. Real events realign it instantly.
+  // forward between milestones so the bar keeps moving. Real events
+  // realign it instantly.
   const estimateTicker = setInterval(() => {
     const next = BUILD_MILESTONES.find(milestone => milestone > lastProgress) ?? BUILD_DONE_PROGRESS
-    const estimated = lastProgress + estimateProgressGain(Date.now() - lastProgressAt)
-    emitProgress(onProgress, 'build', Math.min(next - 0.1, estimated))
+    emitProgress(onProgress, 'build', estimateProgress(lastProgress, next, Date.now() - lastProgressAt))
   }, 300)
 
   return new Promise<void>((resolvePromise, rejectPromise) => {
@@ -327,8 +335,7 @@ export async function startHarnessWebServer(options: StartHarnessWebServerOption
   // dsh web prints nothing until its URL; estimate forward while waiting.
   const serverStartedAt = Date.now()
   const estimateTicker = setInterval(() => {
-    const estimated = SERVER_START_PROGRESS + estimateProgressGain(Date.now() - serverStartedAt)
-    emitProgress(options.onProgress, 'server', Math.min(READY_PROGRESS - 0.1, estimated))
+    emitProgress(options.onProgress, 'server', estimateProgress(SERVER_START_PROGRESS, READY_PROGRESS, Date.now() - serverStartedAt))
   }, 300)
 
   return new Promise<HarnessWebServer>((resolvePromise, rejectPromise) => {

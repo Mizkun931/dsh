@@ -36,7 +36,7 @@ The desktop launch now shows exactly one splash animation: the window hands off 
 
 The boot-state signal is a new cross-surface contract: desktop and web shell must ship together. A desktop build polling the signal against a web shell that predates it sees no dataset value and falls through to the 30 s timeout — a degraded but safe path, not a failure. The README of `dsh-client-web` documents the signal.
 
-Splash progress now dwells at 96% during the client boot and jumps to 100% at the switch; the fill transition smooths the jump. Build output markers resolve to seven finer milestones (14/24/36/46/58/70/80), and silent phases — tsc, tsdown, vite, the quiet server boot, and the client boot — estimate forward at 350 ms per percent, capped just below the next real milestone: the bar keeps moving through every quiet stretch and real events realign it instantly.
+Splash progress now dwells at 96% during the client boot and jumps to 100% at the switch; the fill transition smooths the jump. Build output markers resolve to seven finer milestones (14/24/36/46/58/70/80), matched only against npm script banners (`> pkg@version script`) so the command echo line cannot mark every script as started at launch. Silent phases — tsc, tsdown, vite, the quiet server boot, and the client boot — estimate forward as an exponential approach (4 s time constant) from the last milestone toward the next, never reaching it: the bar keeps creeping through every quiet stretch and real events realign it instantly.
 
 ## Testing
 

@@ -7,7 +7,7 @@ import { app, BrowserWindow, Menu, dialog, screen, shell } from 'electron'
 import { fileURLToPath } from 'node:url'
 import {
   READY_PROGRESS,
-  estimateProgressGain,
+  estimateProgress,
   startHarnessWebServer,
   stopHarnessWebServer,
   type HarnessStartupProgress,
@@ -179,12 +179,11 @@ async function bootDesktop(): Promise<void> {
     mainWindow = createMainWindow(server.url)
     await mainWindow.loadURL(server.url)
     // The client-side boot has no progress events; estimate forward from
-    // READY_PROGRESS while waiting so the bar keeps moving (never hits 100
-    // before the settle).
+    // READY_PROGRESS toward 100 while waiting so the bar keeps moving
+    // (the estimate never reaches 100 before the settle).
     const clientBootStartedAt = Date.now()
     const clientBootTicker = setInterval(() => {
-      const estimated = READY_PROGRESS + estimateProgressGain(Date.now() - clientBootStartedAt)
-      latestSplashProgress = clampProgress(Math.min(99.9, estimated))
+      latestSplashProgress = clampProgress(estimateProgress(READY_PROGRESS, 100, Date.now() - clientBootStartedAt))
       void applySplashProgress()
     }, 300)
     try {
