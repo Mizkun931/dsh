@@ -34,18 +34,17 @@ interface MainAppReadyResult {
 }
 
 function createSplashWindow(): BrowserWindow {
-  const { bounds } = screen.getPrimaryDisplay()
+  // A framed window covering the primary work area reads as "fullscreen with a border";
+  // the borderless system fullscreen mode has no frame to show.
+  const { workArea } = screen.getPrimaryDisplay()
   const win = new BrowserWindow({
-    x: bounds.x,
-    y: bounds.y,
-    width: bounds.width,
-    height: bounds.height,
+    x: workArea.x,
+    y: workArea.y,
+    width: workArea.width,
+    height: workArea.height,
     show: false,
-    frame: false,
-    fullscreen: true,
-    fullscreenable: true,
+    frame: true,
     resizable: false,
-    movable: false,
     backgroundColor: '#fbfdff',
     webPreferences: {
       contextIsolation: true,
@@ -58,8 +57,7 @@ function createSplashWindow(): BrowserWindow {
     void applySplashProgress(win)
   })
   win.once('ready-to-show', () => {
-    win.setBounds(bounds, false)
-    win.setFullScreen(true)
+    win.setBounds(workArea, false)
     win.show()
     win.focus()
   })
