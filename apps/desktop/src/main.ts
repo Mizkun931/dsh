@@ -28,13 +28,12 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
 
 function createSplashWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 440,
-    height: 260,
     show: false,
     frame: false,
+    fullscreen: true,
     resizable: false,
     movable: true,
-    backgroundColor: '#060a14',
+    backgroundColor: '#fbfdff',
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

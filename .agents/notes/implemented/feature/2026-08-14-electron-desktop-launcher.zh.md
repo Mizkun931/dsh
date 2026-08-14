@@ -12,7 +12,7 @@ DeepSeek Harness 已经有由 `dsh web` 支撑的浏览器 GUI，但桌面启动
 
 `apps/desktop` 是一个 Electron workspace package，用于启动既有 Web profile。它的 main process 会先打开 splash window，再通过 `DSH_DESKTOP_PNPM` 或 `pnpm` 在后台运行 `pnpm --dir <repo> run build` 编译 workspace artifacts，然后通过 `DSH_DESKTOP_NODE` 或 `node` 使用 `web --host 127.0.0.1 --port 0` 启动已构建的 `@deepseek-ai/dsh` CLI，等待 `dsh web:` readiness URL，并把这个 loopback URL 载入沙箱化 `BrowserWindow`。Electron renderer 使用 `nodeIntegration: false`、`contextIsolation: true` 和 `sandbox: true`；外部导航会交给操作系统浏览器，而不是获得 Node 能力。
 
-桌面包持有 `apps/desktop/assets/splash.html` 中的无边框 splash window。该 splash 只显示 DeepSeek logo、`DeepSeek` 字标、`探索未至之境` 标语和一条进度条。进度条宽度由 main process 从启动期 build 与 Web-host readiness 阶段解析出的进度事件驱动，因此前台启动动画会和后台工作保持一致。`packages/client/web/src/AppRoot.tsx` 中的 Web shell loading page 使用相同的 logo-led loading language，用于主窗口载入后插件加载的间隔。
+桌面包持有 `apps/desktop/assets/splash.html` 中的全屏无边框 splash window。该 splash 只显示从截图提取并着色的 DeepSeek 图标与字标、液态玻璃底的 `Harness` 标记和一条进度条。进度条宽度由 main process 从启动期 build 与 Web-host readiness 阶段解析出的进度事件驱动，因此前台启动动画会和后台工作保持一致。`packages/client/web/src/AppRoot.tsx` 中的 Web shell loading page 使用相同的 logo-led loading language，用于主窗口载入后插件加载的间隔。
 
 后端进程会在 `before-quit` 期间停止。在 Windows 上，launcher 使用 `taskkill.exe /pid <pid> /t /f`，避免 Web host 下的子进程在 app 关闭后继续占用端口。Electron Builder 保持 app unpacked，并跳过 Electron-native dependency rebuilds，因为后端依赖在 Node 子进程内运行，而不是在 Electron renderer 内运行。
 

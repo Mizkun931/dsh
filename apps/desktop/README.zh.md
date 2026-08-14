@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-这是基于已发布 Web profile 的 Electron 桌面启动器参考。该包会先显示无边框 DeepSeek 开屏窗口，在后台编译 workspace artifacts 并同步更新开屏进度，然后使用 `web --host 127.0.0.1 --port 0` 启动已构建的 `@deepseek-ai/dsh` CLI，等待 `dsh web:` URL 行，再在沙箱化 Electron 窗口中打开这个 loopback URL。
+这是基于已发布 Web profile 的 Electron 桌面启动器参考。该包会先显示全屏无边框 DeepSeek Harness 开屏窗口，在后台编译 workspace artifacts 并同步更新开屏进度，然后使用 `web --host 127.0.0.1 --port 0` 启动已构建的 `@deepseek-ai/dsh` CLI，等待 `dsh web:` URL 行，再在沙箱化 Electron 窗口中打开这个 loopback URL。
 
 启动器复用 [`@deepseek-ai/dsh-web-app`](../../packages/bundle/web-app/README.md) 持有的浏览器应用和 host 图，不定义第二套前端组合，也不定义独立 API 桥。
 
@@ -16,7 +16,7 @@ pnpm desktop:pack
 pnpm desktop:dist
 ```
 
-`desktop:dev` 会构建 Electron shell 并启动 Electron；workspace Web 和 CLI artifacts 会在 app 打开后于开屏窗口背后编译。`desktop:pack` 会在 `apps/desktop/dist-desktop/` 下写入未打包安装器的 Windows 构建。`desktop:dist` 会写入此包配置的 Windows 安装器目标。
+`desktop:dev` 会构建 Electron shell 并启动 Electron；workspace Web 和 CLI artifacts 会在 app 打开后于开屏窗口背后编译。开屏使用参考图中的 DeepSeek 图标与字标，追加液态玻璃底的 `Harness` 标记，并保留由启动进度事件驱动的进度条。`desktop:pack` 会在 `apps/desktop/dist-desktop/` 下写入未打包安装器的 Windows 构建。`desktop:dist` 会写入此包配置的 Windows 安装器目标。
 
 当打包后的 app 不在 checkout 内启动，并且启动器无法从当前进程位置发现仓库根目录时，设置 `DSH_DESKTOP_REPO`。当 `node` 不在 `PATH` 中时，设置 `DSH_DESKTOP_NODE`；当启动期 build 需要指定 `pnpm` 命令时，设置 `DSH_DESKTOP_PNPM`。
 
