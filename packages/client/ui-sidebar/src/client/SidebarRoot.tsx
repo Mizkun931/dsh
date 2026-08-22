@@ -145,9 +145,6 @@ export function SidebarRoot({
                     <>
                       <span className={css.fallbackBrandName}>Deepseek</span>
                       <span className={css.brandChip}>Harness</span>
-                      {process.env.DSH_CLIENT_COMMIT_HASH
-                        ? <span className={css.buildRevision}>{process.env.DSH_CLIENT_COMMIT_HASH}</span>
-                        : null}
                     </>
                   ),
                 })}
