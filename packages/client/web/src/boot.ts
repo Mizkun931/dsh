@@ -12,7 +12,7 @@ import type {
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { BootPage } from './boot-page.ts'
 import { getStaticModules } from './seed.ts'
-import { STATE_LABELS } from './loader-status.ts'
+import { STATE_LABELS, publishBootState } from './loader-status.ts'
 import './base.css'
 
 /** Module transport hook replaced by jsdom tests. */
@@ -44,6 +44,7 @@ export class AppWebEntry {
    * @returns Resolves after application mount or failure rendering.
    */
   async run(): Promise<void> {
+    publishBootState('loading')
     try {
       const win = globalThis as DshWindow
       const moduleLoader = win.__ModuleLoader__
@@ -71,9 +72,11 @@ export class AppWebEntry {
       this.ctx = ctx
       await this.runPluginBoot(ctx, prefetching)
       await this.mountApp(ctx)
+      publishBootState('ready')
     } catch (reason) {
       console.error(reason)
       this.page.fail(reason instanceof Error ? reason.message : String(reason))
+      publishBootState('failed')
     }
   }
 
