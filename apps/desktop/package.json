@@ -19,7 +19,7 @@
   ],
   "scripts": {
     "build": "tsc -b tsconfig.json",
-    "dev": "pnpm run build && electron .",
+    "dev": "pnpm run build && node scripts/launch-dev.mjs",
     "test": "pnpm --dir ../.. exec vitest run apps/desktop/tests",
     "pack:win": "pnpm --dir ../.. run build && pnpm run build && node scripts/copy-pnpm.mjs && electron-builder --win dir",
     "dist:win": "pnpm --dir ../.. run build && pnpm run build && node scripts/copy-pnpm.mjs && electron-builder --win nsis"

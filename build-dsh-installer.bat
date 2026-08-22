@@ -17,7 +17,7 @@ echo.
 echo ============================================================
 echo  [2/2] 构建 Windows 安装包（nsis）...
 echo ============================================================
-pushd appsdesktop
+pushd apps\desktop
 call pnpm run dist:win
 set "CODE=%ERRORLEVEL%"
 popd
@@ -29,6 +29,6 @@ if not "%CODE%"=="0" (
 
 echo.
 echo 完成！安装包位于：
-echo   appsdesktopdist-desktopDeepSeek Harness Setup 0.1.0-rc.5.exe
+echo   apps\desktop\dist-desktop\DeepSeek Harness Setup 0.1.0-rc.5.exe
 echo 安装后可双击启动 DeepSeek Harness；插件与 skill 的用户数据在 ~/.dsh 下。
 pause
