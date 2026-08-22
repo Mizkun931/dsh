@@ -442,7 +442,9 @@ export async function startHarnessWebServer(options: StartHarnessWebServerOption
   // The profile boot mounts a watch-only HMR instance for live user patches,
   // which requires the internal module loader; the flag must sit in execArgv
   // (NODE_OPTIONS is not guaranteed to land there on every runtime).
-  const child = spawn(backend.command, ['--expose-internals', resolveDshBin(), 'web', '--host', '127.0.0.1', '--port', '0'], {
+  // --no-open: dsh web opens the default browser by default; the desktop app
+  // renders the page itself, so the backend must not pop a browser tab.
+  const child = spawn(backend.command, ['--expose-internals', resolveDshBin(), 'web', '--host', '127.0.0.1', '--port', '0', '--no-open'], {
     cwd: backend.cwd,
     env: {
       ...backend.env,
