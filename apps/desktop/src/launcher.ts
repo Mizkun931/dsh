@@ -3,8 +3,8 @@
  * @module @deepseek-ai/dsh-desktop/launcher
  */
 
-import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process'
-import { existsSync, lstatSync } from 'node:fs'
+import { spawn, spawnSync, type ChildProcess, type SpawnOptions } from 'node:child_process'
+import { existsSync, lstatSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -366,6 +366,45 @@ function packagedBackendLaunch(appRoot: string): { command: string; cwd: string;
   }
 }
 
+/** Outcome of reclaiming the task-board ledger lock before boot. */
+export type LedgerReclaimResult = 'absent' | 'cleared' | 'killed' | 'failed'
+
+/**
+ * Take over the task-board ledger lock (`~/.dsh/task-board/ledger-v2.lock`)
+ * held by a previous Web profile instance. A leftover browser/dev instance
+ * keeps this single-instance lock, so the desktop backend would fail its
+ * plugin tree boot with "task-board ledger is already owned by process N";
+ * the lock file also survives a killed owner as a stale PID. Terminate a live
+ * owner and remove the lock either way, so the desktop launch never depends
+ * on another instance's lifecycle.
+ * @param lockPath - ledger lock path; defaults to the user data location.
+ * @returns what was done to the lock.
+ */
+export function reclaimTaskBoardLedger(lockPath = join(homedir(), '.dsh', 'task-board', 'ledger-v2.lock')): LedgerReclaimResult {
+  try {
+    if (!existsSync(lockPath)) return 'absent'
+    const { pid } = JSON.parse(readFileSync(lockPath, 'utf8')) as { pid?: unknown }
+    if (typeof pid !== 'number') return 'failed'
+    let alive = true
+    try {
+      process.kill(pid, 0)
+    } catch {
+      alive = false
+    }
+    if (alive) {
+      if (process.platform === 'win32') {
+        spawnSync('taskkill.exe', ['/pid', String(pid), '/t', '/f'], { stdio: 'ignore', windowsHide: true })
+      } else {
+        try { process.kill(pid) } catch { /* already exiting */ }
+      }
+    }
+    rmSync(lockPath, { force: true })
+    return alive ? 'killed' : 'cleared'
+  } catch {
+    return 'failed'
+  }
+}
+
 /** The pnpm binary shipped inside a packaged app, when present. */
 function packagedPnpmPath(appRoot: string): string | undefined {
   const pnpm = join(dirname(appRoot), 'pnpm', 'pnpm.exe')
@@ -394,6 +433,11 @@ export async function startHarnessWebServer(options: StartHarnessWebServerOption
     emitProgress(options.onProgress, 'server', SERVER_START_PROGRESS)
     backend = { command: resolveNodeExecutable(), cwd: repoRoot, env: process.env }
   }
+
+  // A previous Web profile instance (browser/dev/other desktop launch) keeps
+  // the task-board single-instance lock; take it over so this backend's
+  // plugin tree can boot regardless of that instance's lifecycle.
+  reclaimTaskBoardLedger()
 
   // The profile boot mounts a watch-only HMR instance for live user patches,
   // which requires the internal module loader; the flag must sit in execArgv

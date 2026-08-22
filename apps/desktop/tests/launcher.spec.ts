@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { lstatSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { existsSync, lstatSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import {
@@ -8,6 +9,7 @@ import {
   isPackagedInstall,
   parseReadyUrl,
   progressForBuildOutput,
+  reclaimTaskBoardLedger,
   resolveHarnessRepoRoot,
   resolveNodeExecutable,
   resolvePnpmExecutable,
@@ -101,5 +103,42 @@ describe('desktop launcher helpers', () => {
     expect(estimateProgress(24, 36, 4_000)).toBeLessThan(35.9)
     expect(estimateProgress(24, 36, 60_000)).toBeGreaterThan(35.5)
     expect(estimateProgress(24, 36, 60_000)).toBeLessThan(35.9)
+  })
+
+  it('clears a stale task-board ledger lock left by a dead process', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-ledger-'))
+    try {
+      const lock = join(dir, 'ledger-v2.lock')
+      writeFileSync(lock, JSON.stringify({ pid: 999_999_999, token: 'stale' }))
+      expect(reclaimTaskBoardLedger(lock)).toBe('cleared')
+      expect(existsSync(lock)).toBe(false)
+      expect(reclaimTaskBoardLedger(lock)).toBe('absent')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('kills a live lock owner so the backend can boot', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-ledger-'))
+    const victim = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    })
+    const exited = new Promise<void>((resolve) => {
+      const settle = (): void => resolve()
+      victim.once('exit', settle)
+      victim.once('error', settle)
+    })
+    try {
+      const lock = join(dir, 'ledger-v2.lock')
+      writeFileSync(lock, JSON.stringify({ pid: victim.pid, token: 'live' }))
+      expect(reclaimTaskBoardLedger(lock)).toBe('killed')
+      expect(existsSync(lock)).toBe(false)
+      await exited
+      expect(victim.exitCode).not.toBeNull()
+    } finally {
+      victim.kill()
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
