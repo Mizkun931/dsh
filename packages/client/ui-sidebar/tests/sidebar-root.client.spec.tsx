@@ -103,7 +103,8 @@ describe('SidebarRoot shell', () => {
         options?.fallback ?? null) as SidebarRootComponentProps['renderSlot']}
     />)
 
-    expect(screen.getByText('DeepSeek Harness')).toBeTruthy()
+    expect(screen.getByText('Deepseek')).toBeTruthy()
+    expect(screen.getByText('Harness')).toBeTruthy()
     expect(screen.getByText('0123456')).toBeTruthy()
     expect(container.querySelector('svg')).not.toBeNull()
   })
