@@ -4,7 +4,7 @@
  */
 
 import { spawn, spawnSync, type ChildProcess, type SpawnOptions } from 'node:child_process'
-import { existsSync, lstatSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, lstatSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -19,6 +19,48 @@ export const READY_TIMEOUT_ENV = 'DSH_DESKTOP_READY_TIMEOUT_MS'
  * headroom while still failing loud on a genuinely wedged backend.
  */
 const DEFAULT_READY_TIMEOUT_MS = 300_000
+
+/** User-data file recording the last free Web port, so the desktop reuses one origin. */
+const WEB_PORT_FILE = '.web-port'
+
+/** Path of the persisted Web-port file under the DSH user-data directory. */
+function webPortFile(): string {
+  return join(homedir(), '.dsh', WEB_PORT_FILE)
+}
+
+/**
+ * Read the port of the last successful Web boot. Reusing it keeps the desktop
+ * app on one `http://127.0.0.1:<port>` origin across restarts, so browser
+ * storage (localStorage) — the home of client plugin settings and UI state —
+ * survives instead of resetting because each launch landed on a fresh random
+ * port (and therefore a fresh origin).
+ * @returns the persisted port, or undefined when none is recorded.
+ */
+function readPersistedWebPort(): number | undefined {
+  try {
+    const port = Number(readFileSync(webPortFile(), 'utf8').trim())
+    return Number.isInteger(port) && port > 0 && port <= 65535 ? port : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Record the port the Web profile actually bound, so the next launch reuses
+ * that origin. A non-URL or port-less value is ignored.
+ * @param url - the ready URL printed by `dsh web`.
+ */
+function persistWebPort(url: string): void {
+  try {
+    const port = Number(new URL(url).port)
+    if (Number.isInteger(port) && port > 0) {
+      writeFileSync(webPortFile(), String(port), { encoding: 'utf8' })
+    }
+  } catch {
+    /* url is not a parseable absolute URL — nothing to persist */
+  }
+}
+
 /**
  * Resolve the startup ready deadline from the environment. `DSH_DESKTOP_READY_TIMEOUT_MS`
  * overrides the compile-time default; the literal `0` (or any non-positive / non-finite
@@ -465,7 +507,7 @@ function packagedPnpmPath(appRoot: string): string | undefined {
   return existsSync(pnpm) ? pnpm : undefined
 }
 
-/** Build, start `dsh web --port 0`, and resolve after it prints the ready URL. */
+/** Build, start `dsh web` on a persisted Web port (random on first run, then reused), and resolve after it prints the ready URL. */
 export async function startHarnessWebServer(options: StartHarnessWebServerOptions = {}): Promise<HarnessWebServer> {
   const libDir = dirname(fileURLToPath(import.meta.url))
   const appRoot = dirname(libDir)
@@ -507,7 +549,13 @@ export async function startHarnessWebServer(options: StartHarnessWebServerOption
   // (NODE_OPTIONS is not guaranteed to land there on every runtime).
   // --no-open: dsh web opens the default browser by default; the desktop app
   // renders the page itself, so the backend must not pop a browser tab.
-  const child = spawn(backend.command, ['--expose-internals', resolveDshBin(), 'web', '--host', '127.0.0.1', '--port', '0', '--no-open'], {
+  // Reuse the last Web port so the desktop stays on one origin across
+  // restarts (browser storage is origin-scoped; a fresh random port would
+  // reset every client-persisted setting). Fall back to a random port only
+  // when none is recorded.
+  const persistedPort = readPersistedWebPort()
+  const portArg = persistedPort === undefined ? '0' : String(persistedPort)
+  const child = spawn(backend.command, ['--expose-internals', resolveDshBin(), 'web', '--host', '127.0.0.1', '--port', portArg, '--no-open'], {
     cwd: backend.cwd,
     env: {
       ...backend.env,
@@ -532,6 +580,9 @@ export async function startHarnessWebServer(options: StartHarnessWebServerOption
       settled = true
       clearInterval(estimateTicker)
       clearTimeout(timeout)
+      // The persisted port is now suspect (e.g. claimed by another process);
+      // drop it so the next launch picks a fresh port instead of wedging here.
+      if (persistedPort !== undefined) rmSync(webPortFile(), { force: true })
       stopHarnessWebServer({ url: '', process: child })
       rejectPromise(error)
     }
@@ -540,6 +591,7 @@ export async function startHarnessWebServer(options: StartHarnessWebServerOption
       settled = true
       clearInterval(estimateTicker)
       clearTimeout(timeout)
+      persistWebPort(url)
       resolvePromise({ url, process: child })
     }
 
