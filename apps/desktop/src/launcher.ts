@@ -11,7 +11,61 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const READY_URL_PATTERN = /(?:^|\r?\n)dsh web:\s+(http:\/\/127\.0\.0\.1:\d+)(?=\s|\(|$)/
-const DEFAULT_READY_TIMEOUT_MS = 60_000
+/** Env var overriding the startup ready deadline (ms). `0` disables the deadline. */
+export const READY_TIMEOUT_ENV = 'DSH_DESKTOP_READY_TIMEOUT_MS'
+/**
+ * Compile-time default ready deadline. Plugin-rich workspaces load more client
+ * bundles at boot, so a short default kills the splash mid-startup; 300s leaves
+ * headroom while still failing loud on a genuinely wedged backend.
+ */
+const DEFAULT_READY_TIMEOUT_MS = 300_000
+/**
+ * Resolve the startup ready deadline from the environment. `DSH_DESKTOP_READY_TIMEOUT_MS`
+ * overrides the compile-time default; the literal `0` (or any non-positive / non-finite
+ * value) disables the deadline entirely so the splash waits as long as the backend needs.
+ * @param env - candidate environment.
+ * @returns the deadline in ms, or `undefined` when the deadline is disabled.
+ */
+export function resolveReadyTimeoutMs(env: NodeJS.ProcessEnv): number | undefined {
+  const raw = env[READY_TIMEOUT_ENV]
+  if (raw === undefined || raw === '') return DEFAULT_READY_TIMEOUT_MS
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed <= 0) return undefined
+  return Math.floor(parsed)
+}
+
+/** Env var overriding whether the dev relaunch skips the full workspace build when artifacts are ready. */
+export const FORCE_BUILD_ENV = 'DSH_DESKTOP_FORCE_BUILD'
+/** Workspace-relative artifacts whose presence means the Web profile can boot without a full build. */
+const WEB_READY_MARKERS: readonly string[] = [
+  join('apps', 'web', 'dist', 'index.html'),
+  join('apps', 'cli', 'lib', 'bin.js'),
+  join('packages', 'client', 'web', 'lib', 'index.js'),
+]
+/**
+ * Whether the workspace already carries the artifacts a local Web profile boots
+ * from, so the dev relaunch can skip the full `pnpm run build`.
+ * @param repoRoot - repository root.
+ * @returns true when every ready marker exists.
+ */
+export function workspaceBuildReady(repoRoot: string): boolean {
+  return WEB_READY_MARKERS.every(marker => existsSync(join(repoRoot, marker)))
+}
+/**
+ * Whether to skip the full workspace build on a dev relaunch. When the build
+ * artifacts are ready AND the caller did not force a rebuild, skip — a manual
+ * dev relaunch then boots in seconds. Set `DSH_DESKTOP_FORCE_BUILD=1` to force
+ * the full build (e.g. after changing a build-influencing source).
+ * @param env - candidate environment.
+ * @param repoRoot - repository root.
+ * @returns true to skip the build.
+ */
+export function shouldSkipWorkspaceBuild(env: NodeJS.ProcessEnv, repoRoot: string): boolean {
+  const force = env[FORCE_BUILD_ENV]
+  if (force !== undefined && force !== '' && force !== '0') return false
+  return workspaceBuildReady(repoRoot)
+}
+
 const TAIL_LIMIT = 8_000
 const REQUIRED_REPO_MARKERS = ['package.json', 'pnpm-lock.yaml', join('apps', 'cli', 'package.json')] as const
 /** The dsh CLI manifest inside a packaged app's node_modules (relative to the app root). */
@@ -416,7 +470,8 @@ export async function startHarnessWebServer(options: StartHarnessWebServerOption
   const libDir = dirname(fileURLToPath(import.meta.url))
   const appRoot = dirname(libDir)
   const packaged = options.packaged ?? isPackagedInstall(appRoot)
-  const timeoutMs = options.timeoutMs ?? DEFAULT_READY_TIMEOUT_MS
+  // options.timeoutMs wins; otherwise the env-var resolveReadyTimeoutMs (0 disables the deadline).
+  const timeoutMs = options.timeoutMs ?? resolveReadyTimeoutMs(process.env)
 
   let backend: { command: string; cwd: string; env: NodeJS.ProcessEnv }
   if (packaged) {
@@ -429,8 +484,16 @@ export async function startHarnessWebServer(options: StartHarnessWebServerOption
     const repoRoot = resolveLaunchRepoRoot(options.repoRoot)
     const buildOptions: HarnessBuildOptions = { repoRoot }
     if (options.onProgress !== undefined) buildOptions.onProgress = options.onProgress
-    await runHarnessBuild(buildOptions)
-    emitProgress(options.onProgress, 'server', SERVER_START_PROGRESS)
+    // Artifacts already present (and the caller did not force a rebuild): skip
+    // the full workspace build so a manual dev relaunch boots in seconds. This
+    // trusts the existing build; change it with `pnpm run build` or a dev:web
+    // watcher, or set DSH_DESKTOP_FORCE_BUILD=1 to rebuild on next launch.
+    if (shouldSkipWorkspaceBuild(process.env, repoRoot)) {
+      emitProgress(options.onProgress, 'server', SERVER_START_PROGRESS)
+    } else {
+      await runHarnessBuild(buildOptions)
+      emitProgress(options.onProgress, 'server', SERVER_START_PROGRESS)
+    }
     backend = { command: resolveNodeExecutable(), cwd: repoRoot, env: process.env }
   }
 
@@ -480,9 +543,13 @@ export async function startHarnessWebServer(options: StartHarnessWebServerOption
       resolvePromise({ url, process: child })
     }
 
-    const timeout = setTimeout(() => {
-      rejectOnce(startupFailure(`Timed out waiting ${String(timeoutMs)}ms for dsh web to print its URL.`, stdout, stderr))
-    }, timeoutMs)
+    // timeoutMs === undefined (env 0) disables the deadline: the splash waits
+    // as long as the backend needs. clearTimeout(undefined) is a no-op.
+    const timeout = timeoutMs === undefined
+      ? undefined
+      : setTimeout(() => {
+        rejectOnce(startupFailure(`Timed out waiting ${String(timeoutMs)}ms for dsh web to print its URL.`, stdout, stderr))
+      }, timeoutMs)
 
     child.stdout?.setEncoding('utf8')
     child.stderr?.setEncoding('utf8')

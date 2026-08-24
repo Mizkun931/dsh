@@ -20,6 +20,22 @@ const DEFAULT_WINDOW_HEIGHT = 860
 const SPLASH_MINIMUM_MS = 1_100
 const SPLASH_FADE_MS = 360
 const MAIN_APP_READY_TIMEOUT_MS = 30_000
+/** Env var overriding the client-boot deadline (ms). `0` disables it (waits indefinitely). */
+const APP_READY_TIMEOUT_ENV = 'DSH_DESKTOP_APP_READY_TIMEOUT_MS'
+/**
+ * Resolve the client-boot deadline from the environment. `DSH_DESKTOP_APP_READY_TIMEOUT_MS`
+ * overrides the default; `0` (or any non-positive / non-finite value) yields `Infinity`,
+ * so the splash never times out waiting for the web shell to boot.
+ * @param env - candidate environment.
+ * @returns the deadline in ms, `Infinity` when disabled.
+ */
+function resolveAppReadyTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env[APP_READY_TIMEOUT_ENV]
+  if (raw === undefined || raw === '') return MAIN_APP_READY_TIMEOUT_MS
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed <= 0) return Number.POSITIVE_INFINITY
+  return Math.floor(parsed)
+}
 
 let server: HarnessWebServer | undefined
 let mainWindow: BrowserWindow | undefined
@@ -125,7 +141,7 @@ async function waitForMainAppReady(win: BrowserWindow): Promise<void> {
   if (win.isDestroyed()) return
   const result = await win.webContents.executeJavaScript(`
     (() => new Promise(resolve => {
-      const deadline = Date.now() + ${String(MAIN_APP_READY_TIMEOUT_MS)};
+      const deadline = Date.now() + ${String(resolveAppReadyTimeoutMs())};
       const tick = () => {
         // The web shell kernel publishes its boot state on <html>
         // (data-dsh-boot); poll the signal instead of guessing from text.

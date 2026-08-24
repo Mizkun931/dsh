@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { spawn } from 'node:child_process'
 import { existsSync, lstatSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import {
   estimateProgress,
@@ -11,8 +11,11 @@ import {
   progressForBuildOutput,
   reclaimTaskBoardLedger,
   resolveHarnessRepoRoot,
+  resolveReadyTimeoutMs,
   resolveNodeExecutable,
   resolvePnpmExecutable,
+  shouldSkipWorkspaceBuild,
+  workspaceBuildReady,
 } from '../src/launcher.ts'
 
 describe('desktop launcher helpers', () => {
@@ -33,6 +36,34 @@ describe('desktop launcher helpers', () => {
       writeFileSync(join(root, 'apps', 'cli', 'package.json'), '{}')
       expect(isHarnessRepoRoot(root)).toBe(true)
       expect(resolveHarnessRepoRoot('C:\\missing', { DSH_DESKTOP_REPO: root })).toBe(root)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('resolves the ready deadline from the environment with a disabled escape hatch', () => {
+    expect(resolveReadyTimeoutMs({})).toBe(300_000)
+    expect(resolveReadyTimeoutMs({ DSH_DESKTOP_READY_TIMEOUT_MS: '120000' })).toBe(120_000)
+    expect(resolveReadyTimeoutMs({ DSH_DESKTOP_READY_TIMEOUT_MS: '0' })).toBeUndefined()
+    expect(resolveReadyTimeoutMs({ DSH_DESKTOP_READY_TIMEOUT_MS: '-1' })).toBeUndefined()
+    expect(resolveReadyTimeoutMs({ DSH_DESKTOP_READY_TIMEOUT_MS: 'abc' })).toBeUndefined()
+  })
+
+  it('detects a ready workspace build and skips it unless force-built', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-desktop-ready-'))
+    try {
+      // No artifacts: not ready, never skips.
+      expect(workspaceBuildReady(root)).toBe(false)
+      expect(shouldSkipWorkspaceBuild({}, root)).toBe(false)
+      // Every marker present: ready; skips unless force.
+      for (const marker of ['apps/web/dist/index.html', 'apps/cli/lib/bin.js', 'packages/client/web/lib/index.js']) {
+        const file = join(root, marker)
+        mkdirSync(dirname(file), { recursive: true })
+        writeFileSync(file, '')
+      }
+      expect(workspaceBuildReady(root)).toBe(true)
+      expect(shouldSkipWorkspaceBuild({}, root)).toBe(true)
+      expect(shouldSkipWorkspaceBuild({ DSH_DESKTOP_FORCE_BUILD: '1' }, root)).toBe(false)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
