@@ -40,6 +40,8 @@ pnpm desktop:dist:mac:dmg    # dmg image (macOS host only)
 
 各主机有一键脚本：Windows 用 `build-dsh-installer.bat [win|all]`，macOS 用 `build-dsh-installer.sh [dmg|zip|all]`。copy-pnpm 脚本支持 `--platform`/`--arch` 参数，用于在 macOS/Linux 主机上为其他操作系统准备跨平台内置 pnpm。
 
+手头没有 Mac 时，`.github/workflows/desktop-macos-build.yml` 会在 GitHub Actions 的 macOS runner 上构建 macOS zip + dmg 并上传为 artifact：Actions 页 → *Desktop macOS build* → Run workflow → 下载 `dsh-desktop-macos`。产物未签名、未公证，目标 Mac 需右键 App → *打开* 来首次启动（或执行 `xattr -dr com.apple.quarantine "/Applications/DeepSeek Harness.app"` 清除隔离属性）。
+
 当打包后的 app 不在 checkout 内启动，并且启动器无法从当前进程位置发现仓库根目录时，设置 `DSH_DESKTOP_REPO`。当 `node` 不在 `PATH` 中时，设置 `DSH_DESKTOP_NODE`；当启动期 build 需要指定 `pnpm` 命令时，设置 `DSH_DESKTOP_PNPM`。
 
 ## Model Experience

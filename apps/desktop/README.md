@@ -40,6 +40,8 @@ pnpm desktop:dist:mac:dmg    # dmg image (macOS host only)
 
 There is a one-shot script per host: `build-dsh-installer.bat [win|all]` on Windows and `build-dsh-installer.sh [dmg|zip|all]` on macOS. The copy-pnpm script accepts `--platform`/`--arch` to prepare a cross-platform bundled pnpm (used when packaging for another OS on a macOS/Linux host).
 
+Without a Mac at hand, the `.github/workflows/desktop-macos-build.yml` workflow builds the macOS zip + dmg on a GitHub Actions macOS runner and uploads them as an artifact: Actions tab → *Desktop macOS build* → Run workflow → download `dsh-desktop-macos`. The artifacts are unsigned and unnotarized, so the target Mac must open the app via right-click → *Open* (or clear the quarantine attribute with `xattr -dr com.apple.quarantine "/Applications/DeepSeek Harness.app"`).
+
 Set `DSH_DESKTOP_REPO` when launching a packaged app outside the checkout and the launcher cannot discover the repository root from its current process location. Set `DSH_DESKTOP_NODE` when `node` is not on `PATH`, and set `DSH_DESKTOP_PNPM` when launch-time builds need a specific `pnpm` command.
 
 ## Model Experience
