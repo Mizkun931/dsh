@@ -501,9 +501,13 @@ export function reclaimTaskBoardLedger(lockPath = join(homedir(), '.dsh', 'task-
   }
 }
 
-/** The pnpm binary shipped inside a packaged app, when present. */
+/**
+ * The pnpm binary shipped inside a packaged app, when present. The bundled
+ * pnpm is platform-specific: Windows ships `pnpm.exe` while macOS and Linux
+ * ship a bare `pnpm` executable (see scripts/copy-pnpm.mjs).
+ */
 function packagedPnpmPath(appRoot: string): string | undefined {
-  const pnpm = join(dirname(appRoot), 'pnpm', 'pnpm.exe')
+  const pnpm = join(dirname(appRoot), 'pnpm', process.platform === 'win32' ? 'pnpm.exe' : 'pnpm')
   return existsSync(pnpm) ? pnpm : undefined
 }
 

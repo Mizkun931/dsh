@@ -21,8 +21,12 @@
     "build": "tsc -b tsconfig.json",
     "dev": "pnpm run build && node scripts/launch-dev.mjs",
     "test": "pnpm --dir ../.. exec vitest run apps/desktop/tests",
-    "pack:win": "pnpm --dir ../.. run build && pnpm run build && node scripts/copy-pnpm.mjs && electron-builder --win dir",
-    "dist:win": "pnpm --dir ../.. run build && pnpm run build && node scripts/copy-pnpm.mjs && electron-builder --win nsis"
+    "pack:win": "pnpm run build && node scripts/copy-pnpm.mjs && electron-builder --win dir",
+    "dist:win": "pnpm run build && node scripts/copy-pnpm.mjs && electron-builder --win nsis",
+    "pack:mac": "pnpm run build && node scripts/copy-pnpm.mjs --platform darwin --arch arm64 && electron-builder --mac dir --arm64",
+    "dist:mac": "pnpm run build && node scripts/copy-pnpm.mjs --platform darwin --arch arm64 && electron-builder --mac zip --arm64",
+    "dist:mac:x64": "pnpm run build && node scripts/copy-pnpm.mjs --platform darwin --arch x64 && electron-builder --mac zip --x64",
+    "dist:mac:dmg": "pnpm run build && node scripts/copy-pnpm.mjs --platform darwin && electron-builder --mac dmg"
   },
   "build": {
     "appId": "ai.deepseek.harness.desktop",
@@ -54,6 +58,29 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "icon": "build/icon.png",
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
     }
   },
   "dependencies": {
