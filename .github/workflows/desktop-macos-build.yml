@@ -1,0 +1,75 @@
+# Build the macOS installer packages for the desktop launcher on a macOS
+# runner (electron-builder refuses macOS targets on non-macOS hosts). The
+# unsigned, unnotarized artifacts are meant for personal distribution: open
+# the app via right-click -> Open, or clear the quarantine attribute with
+#   xattr -dr com.apple.quarantine "/Applications/DeepSeek Harness.app"
+#
+# Usage: Actions tab -> "Desktop macOS build" -> Run workflow; download the
+# dsh-desktop-macos artifact and copy the .dmg/.zip to the target Mac.
+name: Desktop macOS build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'dsh-desktop-*'
+
+permissions:
+  contents: read
+
+env:
+  PRIMARY_NODE_VERSION: '24'
+  DSH_TELEMETRY_DISABLED: '1'
+
+jobs:
+  mac:
+    name: Build macOS packages
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+
+      - name: Configure pnpm store path
+        id: pnpm-store
+        run: |
+          store_root="$HOME/.local/share/pnpm/store"
+          echo "PNPM_CONFIG_STORE_DIR=$store_root" >> "$GITHUB_ENV"
+          store_path=$(PNPM_CONFIG_STORE_DIR="$store_root" pnpm store path --silent)
+          echo "path=$store_path" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-node-${{ env.PRIMARY_NODE_VERSION }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-node-${{ env.PRIMARY_NODE_VERSION }}-pnpm-
+
+      - name: Install (immutable)
+        run: pnpm install --frozen-lockfile
+
+      - name: Build workspace
+        run: pnpm run build
+
+      - name: Build macOS zip (arm64)
+        run: pnpm --filter @deepseek-ai/dsh-desktop run dist:mac
+
+      - name: Build macOS dmg
+        run: pnpm --filter @deepseek-ai/dsh-desktop run dist:mac:dmg
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-desktop-macos
+          path: apps/desktop/dist-desktop/*
+          if-no-files-found: error
+          retention-days: 30

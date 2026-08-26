@@ -1,0 +1,114 @@
+{
+  "name": "@deepseek-ai/dsh-desktop",
+  "description": "Electron desktop launcher for the DeepSeek Harness Web profile",
+  "version": "0.1.0-rc.5",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "directory": "apps/desktop"
+  },
+  "type": "module",
+  "main": "lib/main.js",
+  "files": [
+    "assets/**",
+    "lib/**",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "dev": "pnpm run build && node scripts/launch-dev.mjs",
+    "test": "pnpm --dir ../.. exec vitest run apps/desktop/tests",
+    "pack:win": "pnpm run build && node scripts/copy-pnpm.mjs && electron-builder --win dir",
+    "dist:win": "pnpm run build && node scripts/copy-pnpm.mjs && electron-builder --win nsis",
+    "pack:mac": "pnpm run build && node scripts/copy-pnpm.mjs --platform darwin --arch arm64 && electron-builder --mac dir --arm64",
+    "dist:mac": "pnpm run build && node scripts/copy-pnpm.mjs --platform darwin --arch arm64 && electron-builder --mac zip --arm64",
+    "dist:mac:x64": "pnpm run build && node scripts/copy-pnpm.mjs --platform darwin --arch x64 && electron-builder --mac zip --x64",
+    "dist:mac:dmg": "pnpm run build && node scripts/copy-pnpm.mjs --platform darwin && electron-builder --mac dmg"
+  },
+  "build": {
+    "appId": "ai.deepseek.harness.desktop",
+    "productName": "DeepSeek Harness",
+    "asar": false,
+    "npmRebuild": false,
+    "directories": {
+      "output": "dist-desktop"
+    },
+    "files": [
+      "assets/**",
+      "lib/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/pnpm",
+        "to": "pnpm"
+      }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis",
+        "dir"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "icon": "build/icon.png",
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/cordis-plugin-group": "workspace:^",
+    "@deepseek-ai/dsh": "workspace:^",
+    "@deepseek-ai/dsh-anonymous-user-id": "workspace:^",
+    "@deepseek-ai/dsh-atomic-write": "workspace:^",
+    "@deepseek-ai/dsh-bash-local": "workspace:^",
+    "@deepseek-ai/dsh-code-runtime": "workspace:^",
+    "@deepseek-ai/dsh-compaction": "workspace:^",
+    "@deepseek-ai/dsh-fs": "workspace:^",
+    "@deepseek-ai/dsh-invariants": "workspace:^",
+    "@deepseek-ai/dsh-output-retention": "workspace:^",
+    "@deepseek-ai/dsh-sandbox": "workspace:^",
+    "@deepseek-ai/dsh-scope": "workspace:^",
+    "@deepseek-ai/dsh-session-telemetry": "workspace:^",
+    "@deepseek-ai/dsh-session-title-llm": "workspace:^",
+    "@deepseek-ai/dsh-shell": "workspace:^",
+    "@deepseek-ai/dsh-spill": "workspace:^",
+    "@deepseek-ai/dsh-subagent-in-process-driver": "workspace:^",
+    "@deepseek-ai/dsh-subprocess": "workspace:^",
+    "@deepseek-ai/dsh-timeout": "workspace:^",
+    "@deepseek-ai/dsh-workflow": "workspace:^"
+  },
+  "devDependencies": {
+    "@pnpm/exe": "11.21.0",
+    "electron": "^43.4.0",
+    "electron-builder": "^26.15.3"
+  },
+  "license": "MIT"
+}

@@ -112,6 +112,16 @@ function anchorPathSpec(argument: string, cwd: string): string {
 }
 
 /**
+ * The pnpm command this `dsh plugin` run forwards to: the packaged app's
+ * bundled pnpm (`DSH_PNPM`) when present — a standalone exe — otherwise the
+ * pnpm on PATH.
+ */
+function resolvePnpmCommand(): string {
+  const bundled = process.env.DSH_PNPM
+  return bundled !== undefined && bundled.trim() !== '' ? bundled : 'pnpm'
+}
+
+/**
  * Run one `dsh plugin` invocation: init if needed, forward to pnpm, reconcile.
  * @param profile - the profile name.
  * @param args - pnpm arguments with relative path specs anchored to the invoking directory.
@@ -124,17 +134,23 @@ export function runPlugin(profile: string, args: readonly string[]): number {
     process.stderr.write(`${NAME}: initialized profile ${profile} at ${dir}\n`)
   }
   const before = readProfileManifest(NAME, dir)
-  // Windows resolves pnpm through its .cmd shim, which spawn() refuses
-  // without a shell since the CVE-2024-27980 hardening.
-  const result = spawnSync('pnpm', args.map(argument => anchorPathSpec(argument, process.cwd())), {
+  const pnpmCommand = resolvePnpmCommand()
+  // Windows resolves the PATH pnpm through its .cmd shim, which spawn()
+  // refuses without a shell since the CVE-2024-27980 hardening. A bundled
+  // pnpm is a standalone exe and needs no shell.
+  const needsShell = process.platform === 'win32' && !pnpmCommand.toLowerCase().endsWith('.exe')
+  const result = spawnSync(pnpmCommand, args.map(argument => anchorPathSpec(argument, process.cwd())), {
     cwd: dir,
     stdio: 'inherit',
-    shell: process.platform === 'win32',
+    shell: needsShell,
   })
   if (result.error !== undefined) {
     const code = (result.error as NodeJS.ErrnoException).code
     if (code === 'ENOENT') {
-      process.stderr.write(`${NAME}: pnpm not found on PATH — install pnpm to manage profile plugins\n`)
+      process.stderr.write(
+        `${NAME}: pnpm not found — the bundled pnpm (DSH_PNPM) is missing or pnpm is not on PATH; `
+        + 'reinstall the app or install pnpm to manage profile plugins\n',
+      )
       return 127
     }
     throw result.error

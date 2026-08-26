@@ -159,6 +159,23 @@
   white-space: nowrap;
 }
 
+/* Black-on-white inverted chip carrying the second word of the brand lockup
+   (primary ink on primary background, scaled to the brand row). */
+.brandChip {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 3px;
+  color: var(--dsw-alias-label-primary-inverted);
+  background: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
 .iconButton {
   flex: none;
   display: inline-flex;
@@ -208,20 +225,6 @@
    secondary icon-button ink. */
 .collapsed .iconButton {
   color: var(--dsw-alias-label-primary);
-}
-
-.buildRevision {
-  display: inline-flex;
-  align-items: center;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 3px;
-  color: var(--dsw-alias-label-primary-inverted);
-  background: var(--dsw-alias-label-primary);
-  font-family: var(--ds-font-family-code);
-  font-size: 8px;
-  font-weight: 500;
-  line-height: 16px;
 }
 
 /* New Session: 38px bar, 12px radius (figma 133:7634 geometry, squared-off

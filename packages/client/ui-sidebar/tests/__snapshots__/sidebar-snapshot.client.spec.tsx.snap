@@ -140,12 +140,12 @@ exports[`sidebar shell snapshots > renders the expanded column (wordmark, capsul
               <span
                 class="fallbackBrandName"
               >
-                DSH Local Build
+                Deepseek
               </span>
               <span
-                class="buildRevision"
+                class="brandChip"
               >
-                abc1234
+                Harness
               </span>
             </div>
           </span>
@@ -266,12 +266,12 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
               <span
                 class="fallbackBrandName"
               >
-                DSH Local Build
+                Deepseek
               </span>
               <span
-                class="buildRevision"
+                class="brandChip"
               >
-                abc1234
+                Harness
               </span>
             </div>
           </span>
